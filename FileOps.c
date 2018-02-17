@@ -204,14 +204,7 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 		/* startet die Unit (wenn sie noch nicht läuft) */
 		/**********************************************************************/
 		case VCDRV_IOC_VPFE_START:
-//VCDrv_VPFE_Configure();
-
-			//für den Fall das ein Abort() zuvor gelaufen war
-			reinit_completion(&pDevData->FIFO_Waiter);
-
-			pDevData->VCDrv_State = VCDRV_STATE_RUNNING;
-
-
+			result = VCDrv_VPFE_Configure(pDevData);
 			break;
 
 

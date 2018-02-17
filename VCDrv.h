@@ -44,29 +44,32 @@
 	#include <linux/printk.h>	// für printk
 #endif
 
-#include <linux/types.h>	// für dev_t
-#include <asm/types.h>		// für u8, s8
-#include <linux/sched.h>	// für current (pointer to the current process)
+#include <linux/types.h>		// für dev_t
+#include <asm/types.h>			// für u8, s8
+#include <linux/sched.h>		// für current (pointer to the current process)
 #include <linux/fs_struct.h>
-#include <linux/kdev_t.h>	// für MAJOR/MINOR
-#include <linux/cdev.h>		// für cdev_*
-#include <linux/device.h>	// für class_create
-#include <linux/fs.h>		// für alloc_chrdev_region /file_*
-#include <linux/semaphore.h>// für up/down ...
-#include <linux/kfifo.h>	// für kfifo_*
-#include <linux/pci.h>		// für pci*
-#include <linux/ioport.h>	// für resource*
-#include <linux/interrupt.h>// für IRQ*
+#include <linux/kdev_t.h>		// für MAJOR/MINOR
+#include <linux/cdev.h>			// für cdev_*
+#include <linux/device.h>		// für class_create
+#include <linux/fs.h>			// für alloc_chrdev_region /file_*
+#include <linux/semaphore.h>	// für up/down ...
+#include <linux/kfifo.h>		// für kfifo_*
+#include <linux/pci.h>			// für pci*
+#include <linux/ioport.h>		// für resource*
+#include <linux/interrupt.h>	// für IRQ*
 #include <linux/dma-mapping.h>	//für dma_*
 #include <linux/scatterlist.h>	// sg_* ...
-#include <linux/spinlock.h>	// spin_* ...
-#include <linux/delay.h>	// für usleep_range
+#include <linux/spinlock.h>		// spin_* ...
+#include <linux/delay.h>		// für usleep_range
 #include <linux/platform_device.h>	// für platform_driver ...
+#include <linux/pm_runtime.h>	//für pm_runtim_*
 #if LINUX_VERSION_CODE != KERNEL_VERSION(2,6,32)
 	#include <asm/uaccess.h>	// für copy_to_user
 #else
 	#include <linux/uaccess.h>	// für copy_to_user
 #endif
+
+#include "am437x-vpfe_regs.h"
 
 
 
@@ -164,7 +167,7 @@ typedef struct _DEVICE_DATA
 	u32 		VPFE_Width;
 	u32	 		VPFE_Height;
 	bool 		VPFE_Is16BitPixel;
-	uintptr_t	VPFE_ImagePointer;	
+	bool		VPFE_IsStartFrameDone;	//sind wir in einem Bild?
 
 } DEVICE_DATA, *PDEVICE_DATA;
 
@@ -208,6 +211,7 @@ long VCDrv_unlocked_ioctl (struct file *filp, unsigned int cmd,unsigned long arg
 
 
 /* VPFE fns */
+int VCDrv_VPFE_Configure(PDEVICE_DATA pDevData);
 int VCDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer);
 void VCDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData);
 int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData);

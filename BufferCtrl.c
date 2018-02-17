@@ -177,7 +177,6 @@ int VCDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroke
 			{ pr_devel(MODDEBUGOUTTEXT" VCDrv_BUF_WaitFor> wait_for_completion_timeout(), timeout!\n"); return 0;}
 		else if ( waitRes < 0 )
 			{ printk(KERN_WARNING MODDEBUGOUTTEXT" VCDrv_BUF_WaitFor> wait_for_completion_timeout(), failed!\n"); return -EINTR;}
-		pr_devel(MODDEBUGOUTTEXT" VCDrv_BUF_WaitFor> wait_for_completion_timeout(), with: %d\n",waitRes);
 	}
 
 
