@@ -73,11 +73,10 @@ static inline void vpfe_wen_enable(PDEVICE_DATA pDevData, const bool boTurnOn)
 }
 
 
+#ifdef DEBUG
 //gibt alle Register aus (nur zum debuggen)
 static void vpfe_reg_dump(PDEVICE_DATA pDevData)
 {
-	int i;
-
 	pr_devel(MODDEBUGOUTTEXT" named\n");
 	pr_devel(MODDEBUGOUTTEXT"------------------------\n");
 	pr_devel(MODDEBUGOUTTEXT"ALAW: 0x%x\n", 		vpfe_reg_read(pDevData, VPFE_ALAW));
@@ -97,14 +96,18 @@ static void vpfe_reg_dump(PDEVICE_DATA pDevData)
 	pr_devel(MODDEBUGOUTTEXT"VPFE_CONFIG: 0x%x\n",	vpfe_reg_read(pDevData, VPFE_CONFIG));
 	pr_devel(MODDEBUGOUTTEXT"VPFE_IRQ_EN_SET: 0x%x\n",vpfe_reg_read(pDevData, VPFE_IRQ_EN_SET));
 	pr_devel(MODDEBUGOUTTEXT"VPFE_IRQ_EN_CLR: 0x%x\n", vpfe_reg_read(pDevData, VPFE_IRQ_EN_CLR));
-
+/*
+ * {
+	int i;
 	pr_devel(MODDEBUGOUTTEXT"\n raw\n");
 	pr_devel(MODDEBUGOUTTEXT"------------------------\n");
 	for (i = 0; i <= 0x120; i+= 4)
 		pr_devel(MODDEBUGOUTTEXT" 0x%03X 0x%8X\n", i, vpfe_reg_read(pDevData, i));
+	}
+*/
 }
 
-
+#endif
 
 
 

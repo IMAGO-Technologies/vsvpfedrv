@@ -167,8 +167,12 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 				if( get_user(tmpPixelSize,(u32*)(pToUserMem+8)) != 0){
 					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
 
-				if( (tmpWidth==0) || (tmpWidth>4096/*doku steht nix regs sind 16Bit*/) || ((tmpWidth&0x1F)!=0) ){
+				if( (tmpWidth==0) || (tmpWidth>4096/*doku steht nix regs sind 16Bit*/) ){
 					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid width\n"); result = -EINVAL; break;}
+				if( (tmpPixelSize==1) && ((tmpWidth&0x1F)!=0) ){
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid width (must be multiple 32Bytes)\n"); result = -EINVAL; break;}
+				if( (tmpPixelSize==2) && ((tmpWidth&0x0F)!=0) ){
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid width (must be multiple 16Bytes)\n"); result = -EINVAL; break;}
 				if( (tmpHeight==0) || (tmpHeight>4096/*doku steht nix regs sind 16Bit*/) ){
 					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid height\n"); result = -EINVAL; break;}
 				if( (tmpPixelSize==0) || (tmpPixelSize>2) ){

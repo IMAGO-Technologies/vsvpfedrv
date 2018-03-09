@@ -1,6 +1,6 @@
 # Comment/uncomment the following line to disable/enable debugging
 # or call make DEBUG=y default is DEBUG=n
-DEBUG = y
+#DEBUG = y
 
 # Add your debugging flag (or not) to EXTRA_CLAGS
 #Note:
