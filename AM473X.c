@@ -423,6 +423,7 @@ int VCDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 			{
 				//> job erzeugen & adden
 				VPFE_JOB tmpJob;
+				memset(&tmpJob, 0, sizeof(tmpJob));	/* wegen warning */	
 				tmpJob.pDMA = pDMAKernelBuffer;
 				if( kfifo_put(&pDevData->FIFO_JobsToDo, tmpJob) == 0 ){
 					printk(KERN_WARNING MODDEBUGOUTTEXT" Locked_ioctl> can't add into FIFO_JobsToDo\n"); result = -ENOMEM;}

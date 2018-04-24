@@ -54,7 +54,7 @@ int VCDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 	if( (*ppVMKernel) == NULL )
  		{printk(KERN_WARNING MODDEBUGOUTTEXT "VCDrv_BUF_Alloc> dma_alloc_coherent() failed!\n"); return -ENOMEM;}
 
-	pr_devel(MODDEBUGOUTTEXT" - alloc> pVM: 0x%p, pDMA: 0x%llx, Bytes: %d\n", *ppVMKernel, (u64)(*ppDMAKernel), *panzBytes);
+	pr_devel(MODDEBUGOUTTEXT" - alloc> pVM: 0x%p, pDMA: 0x%llx, Bytes: %zu\n", *ppVMKernel, (u64)(*ppDMAKernel), *panzBytes);
 
 
 #ifdef DEBUG
@@ -77,7 +77,7 @@ int VCDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 /****************************************************************************************************************/
 void VCDrv_BUF_Free(PDEVICE_DATA pDevData, void* pVMKernel, dma_addr_t pDMAKernel, size_t anzBytes)
 {
-	pr_devel(MODDEBUGOUTTEXT" - free> pVM: 0x%p, pDMA: 0x%llx, Bytes: %d\n", pVMKernel, (u64)(pDMAKernel), anzBytes);
+	pr_devel(MODDEBUGOUTTEXT" - free> pVM: 0x%p, pDMA: 0x%llx, Bytes: %zu\n", pVMKernel, (u64)(pDMAKernel), anzBytes);
 	dma_free_coherent(pDevData->VCDrv_pDeviceDevice, anzBytes, pVMKernel, pDMAKernel);
 }
 
@@ -117,7 +117,7 @@ int VCDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 	vma->vm_ops = NULL;	//sicher ist sicher
 
 
-	pr_devel(MODDEBUGOUTTEXT" - mmap> pVM: 0x%llx, pDMA: 0x%llx, Bytes: %d, Flags: 0x%X\n", (u64)(vma->vm_start), (u64)(phys_addr), size, vma->vm_page_prot);
+	pr_devel(MODDEBUGOUTTEXT" - mmap> pVM: 0x%llx, pDMA: 0x%llx, Bytes: %zu, Flags: 0x%X\n", (u64)(vma->vm_start), (u64)(phys_addr), size, (uint) pgprot_val(vma->vm_page_prot) );
 
 	return 0;	
 }
