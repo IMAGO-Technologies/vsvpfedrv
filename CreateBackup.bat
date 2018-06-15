@@ -1,8 +1,8 @@
 echo off
 @cls
 
-set target_dir=VCDrvLinux_Backup
-set target_file=VCDrvLinux.zip
+set target_dir=VSDrvLinux_Backup
+set target_file=VSDrvLinux.zip
 rem set hg_option=--clean --modified --added
 set hg_option=--modified --added
 
@@ -10,9 +10,9 @@ if exist %target_dir% (rmdir /s /q %target_dir%)
 mkdir %target_dir%
 
 echo:
-echo "	<<< VCDrv_Linux >>>    "
+echo "	<<< VSDrv_Linux >>>    "
 echo ------------------------------------------------------------------------------
-set hg_repro=VCDrv_Linux
+set hg_repro=VSDrv_Linux
 set hg_cmd=hg status %hg_option% -n -R ../%hg_repro%
 mkdir "%target_dir%/%hg_repro%/"
 FOR /f "delims=" %%G IN ('%hg_cmd%') DO xcopy /v "..\%hg_repro%\%%G" "%target_dir%\%hg_repro%\%%G"* | find /v "Datei(en) kopiert"

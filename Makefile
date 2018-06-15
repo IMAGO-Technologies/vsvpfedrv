@@ -23,8 +23,8 @@ endif
 
 #ccflags-y := $(DEBFLAGS) -Werror -Wall -Wextra -Wno-unused-parameter -Wno-date-time 
 ccflags-y := $(DEBFLAGS) -Werror -Wall -Wno-unused-parameter -Wno-date-time 
-vcvpfedrv-objs := VCDrv.o AM473X.o FileOps.o BufferCtrl.o
-obj-m	:= vcvpfedrv.o
+vsvpfedrv-objs := VSDrv.o AM473X.o FileOps.o BufferCtrl.o
+obj-m	:= vsvpfedrv.o
 
 # If KERNELDIR is defined, we've been invoked from the DKMS
 # otherwise we were called directly from the command line
@@ -35,18 +35,18 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules 
 
-# create a file like 'vcvpfedrv4.9.59-rt23-visioncam-xm-1.0.0.0_armv7l.ko'
+# create a file like 'vsvpfedrv4.9.59-rt23-visioncam-xm-1.0.0.0_armv7l.ko'
 deploy:
 	make clean
 	make
-	strip --strip-debug vcvpfedrv.ko
-	mv vcvpfedrv.ko vcvpfedrv$(shell uname -r)_$(shell uname -m).ko
+	strip --strip-debug vsvpfedrv.ko
+	mv vsvpfedrv.ko vsvpfedrv$(shell uname -r)_$(shell uname -m).ko
 
 devel:
 	make 
 	make install
-	rmmod vcvpfedrv
-	modprobe vcvpfedrv
+	rmmod vsvpfedrv
+	modprobe vsvpfedrv
 
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions modules.order Module.symvers

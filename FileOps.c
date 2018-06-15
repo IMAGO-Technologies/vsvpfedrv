@@ -21,7 +21,7 @@
  *
  */
 
-#include "VCDrv.h"
+#include "VSDrv.h"
 
 static long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, const u32 BufferSizeBytes);
 
@@ -32,7 +32,7 @@ static long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMe
 
 
 /****************************************************************************************************************/
-int VCDrv_open(struct inode *node, struct file *filp)
+int VSDrv_open(struct inode *node, struct file *filp)
 {
 	int iMinor;
 	if( (node==NULL) || (filp==NULL) )
@@ -50,14 +50,14 @@ int VCDrv_open(struct inode *node, struct file *filp)
 }
 
 /****************************************************************************************************************/
-ssize_t VCDrv_read (struct file *filp, char __user *buf, size_t count, loff_t *pos)
+ssize_t VSDrv_read (struct file *filp, char __user *buf, size_t count, loff_t *pos)
 {
 	printk(KERN_WARNING MODDEBUGOUTTEXT" read, not supported!\n");
 	return -EFAULT;
 }
 
 /****************************************************************************************************************/
-ssize_t VCDrv_write (struct file *filp, const char __user *buf, size_t count, loff_t *pos)
+ssize_t VSDrv_write (struct file *filp, const char __user *buf, size_t count, loff_t *pos)
 {
 	printk(KERN_WARNING MODDEBUGOUTTEXT" write, not supported!\n");
 	return -EFAULT;
@@ -69,7 +69,7 @@ ssize_t VCDrv_write (struct file *filp, const char __user *buf, size_t count, lo
 //Note: alte ioctl war unter "big kernel lock"
 //http://lwn.net/Articles/119652/
 /****************************************************************************************************************/
-long VCDrv_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg)
+long VSDrv_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int err = 0;
 	long ret = 0;
@@ -82,8 +82,8 @@ long VCDrv_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long ar
 	if( (filp==NULL) || (filp->private_data==NULL) ) return -EINVAL;
 	pDevData = (PDEVICE_DATA) filp->private_data;
 	//ist ist das CMD eins für uns?
-	if (_IOC_TYPE(cmd) != VCDRV_IOC_MAGIC) return -ENOTTY;
-	if (_IOC_NR(cmd) > VCDRV_IOC_MAXNR) return -ENOTTY;
+	if (_IOC_TYPE(cmd) != VSDRV_IOC_MAGIC) return -ENOTTY;
+	if (_IOC_NR(cmd) > VSDRV_IOC_MAXNR) return -ENOTTY;
 
 	//bei uns ist arg ein Pointer, und testen ob wir ihn nutzen dürfen (richtung aus UserSicht)
 	if (_IOC_DIR(cmd) & _IOC_READ)
@@ -116,14 +116,14 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* Gibt die Version als String zurück */
 		/**********************************************************************/
-		case VCDRV_IOC_DRV_GET_VERSION:
+		case VSDRV_IOC_DRV_GET_VERSION:
 			if( sizeof(MODVERSION) > BufferSizeBytes){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_GET_VERSION)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_GET_VERSION)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else
 			{
 				if( copy_to_user(pToUserMem,MODVERSION,sizeof(MODVERSION)) !=0 ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_GET_VERSION)> copy_to_user faild\n"); result = -EFAULT;
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_GET_VERSION)> copy_to_user faild\n"); result = -EFAULT;
 				}
 				else
 					result = sizeof(MODVERSION);
@@ -134,14 +134,14 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* Gibt das Build date/time als String zurück */
 		/**********************************************************************/
-		case VCDRV_IOC_DRV_GET_BUILD_DATE:
+		case VSDRV_IOC_DRV_GET_BUILD_DATE:
 			if( sizeof(MODDATECODE) > BufferSizeBytes){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_GET_BUILD_DATE)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_GET_BUILD_DATE)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else
 			{
 				if( copy_to_user(pToUserMem,MODDATECODE,sizeof(MODDATECODE)) !=0 ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_GET_BUILD_DATE)> copy_to_user faild\n"); result = -EFAULT;
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_GET_BUILD_DATE)> copy_to_user faild\n"); result = -EFAULT;
 				}
 				else
 					result = sizeof(MODDATECODE);
@@ -152,37 +152,37 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* Setzt die AOI */
 		/**********************************************************************/
-		case VCDRV_IOC_DRV_SET_AOI:
+		case VSDRV_IOC_DRV_SET_AOI:
 			if( (sizeof(u32)*3)> BufferSizeBytes){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else
 			{
 				unsigned long irqflags;
 				u32 tmpWidth, tmpHeight, tmpPixelSize;
 				if( get_user(tmpWidth,(u32*)(pToUserMem+0)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
 				if( get_user(tmpHeight,(u32*)(pToUserMem+4)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
 				if( get_user(tmpPixelSize,(u32*)(pToUserMem+8)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> get_user faild\n"); result = -EFAULT; break;}
 
 				if( (tmpWidth==0) || (tmpWidth>4096/*doku steht nix regs sind 16Bit*/) ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid width\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> invalid width\n"); result = -EINVAL; break;}
 				if( (tmpPixelSize==1) && ((tmpWidth&0x1F)!=0) ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid width (must be multiple 32Bytes)\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> invalid width (must be multiple 32Bytes)\n"); result = -EINVAL; break;}
 				if( (tmpPixelSize==2) && ((tmpWidth&0x0F)!=0) ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid width (must be multiple 16Bytes)\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> invalid width (must be multiple 16Bytes)\n"); result = -EINVAL; break;}
 				if( (tmpHeight==0) || (tmpHeight>4096/*doku steht nix regs sind 16Bit*/) ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid height\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> invalid height\n"); result = -EINVAL; break;}
 				if( (tmpPixelSize==0) || (tmpPixelSize>2) ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_SET_AOI)> invalid pixelsize\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_SET_AOI)> invalid pixelsize\n"); result = -EINVAL; break;}
 				
 
-				spin_lock_irqsave(&pDevData->VCDrv_SpinLock, irqflags);
+				spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------------------------------------------------------->
 				//die UNIT darf noch nicht laufen
-				if( pDevData->VCDrv_State == VCDRV_STATE_PREINIT)
+				if( pDevData->VSDrv_State == VSDRV_STATE_PREINIT)
 				{
 					pDevData->VPFE_Width		= tmpWidth;
 					pDevData->VPFE_Height		= tmpHeight;
@@ -191,10 +191,10 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 					pr_devel(MODDEBUGOUTTEXT" - new AOI> width: %d, height: %d, dWord: %c\n", tmpWidth, tmpHeight, (pDevData->VPFE_Is16BitPixel)?('y'):('n') );
 				}
 				else
-					{printk(KERN_WARNING MODDEBUGOUTTEXT "do_ioctl(VCDRV_IOC_SET_AOI)> state must be VCDRV_STATE_PREINIT!\n"); result = -EBUSY;}
+					{printk(KERN_WARNING MODDEBUGOUTTEXT "do_ioctl(VSDRV_IOC_SET_AOI)> state must be VSDRV_STATE_PREINIT!\n"); result = -EBUSY;}
 
 //<----------------------------------------------------------------------------
-				spin_unlock_irqrestore(&pDevData->VCDrv_SpinLock, irqflags);
+				spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 			}
 
 		break;
@@ -207,35 +207,35 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* startet die Unit (wenn sie noch nicht läuft) */
 		/**********************************************************************/
-		case VCDRV_IOC_VPFE_START:
-			result = VCDrv_VPFE_Configure(pDevData);
+		case VSDRV_IOC_VPFE_START:
+			result = VSDrv_VPFE_Configure(pDevData);
 			break;
 
 
 		/* hält Unit an, bricht Waiter ab, Buffer sind dann in FIFO_JobsDone, neuer STATE_PREINIT */
 		/**********************************************************************/
-		case VCDRV_IOC_VPFE_ABORT:
-			result = VCDrv_VPFE_Abort(pDevData);
+		case VSDRV_IOC_VPFE_ABORT:
+			result = VSDrv_VPFE_Abort(pDevData);
 			break;
 
 
 		/* fügt einen Buffer den FIFO hinzu und versucht der Unit einen zu adden  */
 		/**********************************************************************/
-		case VCDRV_IOC_VPFE_ADD_BUFFER:
+		case VSDRV_IOC_VPFE_ADD_BUFFER:
 			if( BufferSizeBytes < (1*sizeof(u64) )){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_VPFE_ADD_BUFFER)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_VPFE_ADD_BUFFER)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else					
 			{
 				//args lesen
 			   	u64 pDMAKernel;
 				if( get_user(pDMAKernel,(u64*)(pToUserMem+0)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_VPFE_ADD_BUFFER)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_VPFE_ADD_BUFFER)> get_user faild\n"); result = -EFAULT; break;}
 				if( pDMAKernel==0 ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_VPFE_ADD_BUFFER)> invalid args\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_VPFE_ADD_BUFFER)> invalid args\n"); result = -EINVAL; break;}
 
 				//gibt den buffer frei
-				result = VCDrv_VPFE_AddBuffer(pDevData, (dma_addr_t) pDMAKernel);
+				result = VSDrv_VPFE_AddBuffer(pDevData, (dma_addr_t) pDMAKernel);
 		    }
 
 			break;
@@ -249,9 +249,9 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* legt einen Buffer im Kernel Speicher an  */
 		/**********************************************************************/
-		case VCDRV_IOC_BUFFER_ALLOC:
+		case VSDRV_IOC_BUFFER_ALLOC:
 			if( BufferSizeBytes < (3*sizeof(u64) )){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_ALLOC)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_ALLOC)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else
 			{
@@ -260,18 +260,18 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 			   	size_t 		panzBytes	= 0;
 
 				// Buffer anlegen
-				result = VCDrv_BUF_Alloc(pDevData, &pVMKernel, &pDMAKernel, &panzBytes);
+				result = VSDrv_BUF_Alloc(pDevData, &pVMKernel, &pDMAKernel, &panzBytes);
 
 		
 				// an User schicken (wenn Ok)
 				if( result == 0 )
 				{
 					if( put_user((uintptr_t)pVMKernel, (u64*)(pToUserMem+0)) != 0){
-						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_ALLOC)> put_user faild\n"); result = -EFAULT; break;}
+						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_ALLOC)> put_user faild\n"); result = -EFAULT; break;}
 					if( put_user( pDMAKernel, (u64*)(pToUserMem+8)) != 0){
-						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_ALLOC)> put_user faild\n"); result = -EFAULT; break;}
+						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_ALLOC)> put_user faild\n"); result = -EFAULT; break;}
 					if( put_user( panzBytes, (u64*)(pToUserMem+16)) != 0){
-						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_ALLOC)> put_user faild\n"); result = -EFAULT; break;}
+						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_ALLOC)> put_user faild\n"); result = -EFAULT; break;}
 					result =  3 * sizeof(u64);
 				}		
 		    }
@@ -281,27 +281,27 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* gibt einen Buffer (aus dem KernelSpeicher) frei  */
 		/**********************************************************************/
-		case VCDRV_IOC_BUFFER_FREE:
+		case VSDRV_IOC_BUFFER_FREE:
 			if( BufferSizeBytes < (3*sizeof(u64) )){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_FREE)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_FREE)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else					
 			{
 				//args lesen
 			   	u64 pVMKernel, pDMAKernel, anzBytes;
 				if( get_user(pVMKernel,(u64*)(pToUserMem+0)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_FREE)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_FREE)> get_user faild\n"); result = -EFAULT; break;}
 				if( get_user(pDMAKernel,(u64*)(pToUserMem+8)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_FREE)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_FREE)> get_user faild\n"); result = -EFAULT; break;}
 				if( get_user(anzBytes,(u64*)(pToUserMem+16)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_FREE)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_FREE)> get_user faild\n"); result = -EFAULT; break;}
 		
 				if( pVMKernel==0 || pDMAKernel==0 || anzBytes==0 || (!PAGE_ALIGNED(anzBytes))  ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_FREE)> invalid args\n"); result = -EINVAL; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_FREE)> invalid args\n"); result = -EINVAL; break;}
 
 
 				//gibt den buffer frei
-				VCDrv_BUF_Free(pDevData, (void*) ((uintptr_t)pVMKernel), (dma_addr_t) pDMAKernel, anzBytes);
+				VSDrv_BUF_Free(pDevData, (void*) ((uintptr_t)pVMKernel), (dma_addr_t) pDMAKernel, anzBytes);
 			
 		    }
 
@@ -310,9 +310,9 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 
 		/* wartet die angegebene Zeit auf einen neuen Buffer  */
 		/**********************************************************************/
-		case VCDRV_IOC_BUFFER_WAIT_FOR:
+		case VSDRV_IOC_BUFFER_WAIT_FOR:
 			if( BufferSizeBytes < (3*sizeof(u64) )){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_WAIT_FOR)> Buffer Length to short\n"); result = -EFBIG;
+				printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_WAIT_FOR)> Buffer Length to short\n"); result = -EFBIG;
 			}
 			else
 			{
@@ -320,23 +320,23 @@ long do_ioctl(PDEVICE_DATA pDevData, const u32 cmd, u8 __user * pToUserMem, cons
 				dma_addr_t 	pDMAKernel;
 				//args lesen
 				if( get_user(TimeOut_ms,(u32*)(pToUserMem+0)) != 0){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_WAIT_FOR)> get_user faild\n"); result = -EFAULT; break;}
+					printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_WAIT_FOR)> get_user faild\n"); result = -EFAULT; break;}
 
 
 				// auf Buffer warten
-				result = VCDrv_BUF_WaitFor(pDevData, TimeOut_ms, &IsBroken, &ImageNumber, &pDMAKernel);
+				result = VSDrv_BUF_WaitFor(pDevData, TimeOut_ms, &IsBroken, &ImageNumber, &pDMAKernel);
 
 		
 				// an User schicken (wenn Ok) [die ersten beiden u64 sind u32 Werte darum 64Bit setzen]
 				if( result == 0 )
 				{	u64 tmp = IsBroken;
 					if( put_user(tmp, (u64*)(pToUserMem+0)) != 0){
-						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_WAIT_FOR)> put_user faild\n"); result = -EFAULT; break;}
+						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_WAIT_FOR)> put_user faild\n"); result = -EFAULT; break;}
 					tmp = ImageNumber;
 					if( put_user(tmp, (u64*)(pToUserMem+8)) != 0){
-						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_WAIT_FOR)> put_user faild\n"); result = -EFAULT; break;}
+						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_WAIT_FOR)> put_user faild\n"); result = -EFAULT; break;}
 					if( put_user(pDMAKernel, (u64*)(pToUserMem+16)) != 0){
-						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VCDRV_IOC_BUFFER_WAIT_FOR)> put_user faild\n"); result = -EFAULT; break;}
+						printk(KERN_WARNING MODDEBUGOUTTEXT" do_ioctl(VSDRV_IOC_BUFFER_WAIT_FOR)> put_user faild\n"); result = -EFAULT; break;}
 					result =  3 * sizeof(u64);
 				}		
 		    }

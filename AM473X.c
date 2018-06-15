@@ -21,17 +21,17 @@
  *
  */
 
-#include "VCDrv.h"
+#include "VSDrv.h"
 
 
 //struct mit den file fns
-struct file_operations VCDrv_fops = {
+struct file_operations VSDrv_fops = {
 	.owner	= THIS_MODULE,
-	.open	= VCDrv_open,
-	.read	= VCDrv_read,
-	.write	= VCDrv_write,
-	.mmap	= VCDrv_BUF_mmap,
-	.unlocked_ioctl = VCDrv_unlocked_ioctl,
+	.open	= VSDrv_open,
+	.read	= VSDrv_read,
+	.write	= VSDrv_write,
+	.mmap	= VSDrv_BUF_mmap,
+	.unlocked_ioctl = VSDrv_unlocked_ioctl,
 	.llseek = no_llseek,
 };
 
@@ -126,7 +126,7 @@ static void vpfe_reg_dump(PDEVICE_DATA pDevData)
 /****************************************************************************************************************/
 //< HWIRQ > hier kommt der VPFE IRQ an (da nicht geteilt kein prüfen notwendig)
 /****************************************************************************************************************/
-irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
+irqreturn_t VSDrv_VPFE_interrupt(int irq, void *dev)
 {
 	u32 vpfe_irq_flags;	
 	unsigned long irqflags;
@@ -136,19 +136,19 @@ irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
 
 
 
-	spin_lock_irqsave(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------->
 
 	//je nach IRQFlag
 	//> Bild-Anfang (nach der 1. Zeile)
 	if (vpfe_irq_flags & VPFE_VDINT0)
 	{
-		//pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_interrupt(VPFE_VDINT0)\n");
+		//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT0)\n");
 
 		//nicht mehr ins RAM schreiben  
 		//Note: 
 		// - ohne das würde die Einheit das Bild wieder überschreiben
-		// - im Prinzip eine RaceCond, da wenn innerhalb der 1. Zeile VCDrv_VPFE_TryToAddNextBuffer_locked() aufgerufen wird
+		// - im Prinzip eine RaceCond, da wenn innerhalb der 1. Zeile VSDrv_VPFE_TryToAddNextBuffer_locked() aufgerufen wird
 		//  bekommt der User ein schwarzes Bild
 		vpfe_wen_enable(pDevData, FALSE);
 	
@@ -158,7 +158,7 @@ irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
 		//Note:
 		// es muss sichergestellt werden das (wenn ein Bild eingezogen werden soll) zuerst VPFE_VDINT0 dann VPFE_VDINT1 kommt
 		// sonnst kann es sein:
-		//  VCDrv_VPFE_TryToAddNextBuffer_locked() setzt inner halb eines Bildes, VPFE_SDR_ADDR und WEN=true
+		//  VSDrv_VPFE_TryToAddNextBuffer_locked() setzt inner halb eines Bildes, VPFE_SDR_ADDR und WEN=true
 		//  dann kommt VPFE_VDINT1 und setzt dan den ptr auf NULL zurück (ohne das gerapped wurde)  (WEN bleibt auf true da VPFE_VDINT0 verpasst wurde)
 		//  mit den nächsten VD werden die Register übernommen  ==> BUM
 		if( (vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000) && (pDevData->VPFE_IsStartFrameDone==FALSE) )
@@ -168,7 +168,7 @@ irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
 	//> Bild-Ende (nach der letzen Zeile)
 	else if ( (vpfe_irq_flags & VPFE_VDINT1) && (pDevData->VPFE_IsStartFrameDone==TRUE) )
 	{
-		//pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_interrupt(VPFE_VDINT1)\n");
+		//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT1)\n");
 
 		//warten wir auf ein Bild?
 		if( vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000 )
@@ -181,13 +181,13 @@ irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
 
 			//> und FIFO adden (es ist immer genug Platz)
 			if( kfifo_avail(&pDevData->FIFO_JobsDone) < 1 ){
-				pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_interrupt()> FIFO_JobsDone is full\n");}
+				pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt()> FIFO_JobsDone is full\n");}
 			else
 			{
 				if( kfifo_put(&pDevData->FIFO_JobsDone, tmpJob) == 0 ){
-					pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_interrupt> can't add into FIFO_JobsDone\n");}
+					pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt> can't add into FIFO_JobsDone\n");}
 
-				//pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_interrupt(VPFE_VDINT1)> new Buffer: 0x%llx, (seq: %d) done\n", (u64) tmpJob.pDMA, tmpJob.ISRCounter);
+				//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT1)> new Buffer: 0x%llx, (seq: %d) done\n", (u64) tmpJob.pDMA, tmpJob.ISRCounter);
 
 
 				//> Waiter aufwecken (hat Zähler)
@@ -202,12 +202,12 @@ irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
 		}//if warten aufs Bild 
 
 		//> versuchen neuen Buffer zu adden
-		VCDrv_VPFE_TryToAddNextBuffer_locked(pDevData);
+		VSDrv_VPFE_TryToAddNextBuffer_locked(pDevData);
 
 	}//if BildEnde ISR
 		
 //<-----------------------------
-	spin_unlock_irqrestore(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 
 	//> IRQ Flags löschen
 	vpfe_reg_write(pDevData, VPFE_VDINT2+VPFE_VDINT1+VPFE_VDINT0, VPFE_IRQ_STS);
@@ -221,14 +221,14 @@ irqreturn_t VCDrv_VPFE_interrupt(int irq, void *dev)
 /****************************************************************************************************************/
 //wird aufgerufen wenn der kernel im DeviceTree einen Eintrag findet
 /****************************************************************************************************************/
-int VCDrv_AM473X_probe(struct platform_device *pdev)
+int VSDrv_AM473X_probe(struct platform_device *pdev)
 {		
 	int res, i, DevIndex, IRQNumber;
 	struct resource *pResource = NULL;	
 	platform_set_drvdata(pdev, NULL);	
 	
 
-	pr_devel(MODDEBUGOUTTEXT" VCDrv_AM473X_probe\n");
+	pr_devel(MODDEBUGOUTTEXT" VSDrv_AM473X_probe\n");
 
 
 	//>freie Minor Nummer?
@@ -239,17 +239,17 @@ int VCDrv_AM473X_probe(struct platform_device *pdev)
 		if(!_ModuleData.boIsMinorUsed[i])
 		{
 			DevIndex = i;
-			VCDrv_InitDrvData(&_ModuleData.Devs[DevIndex]);			
-			_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber = MKDEV(MAJOR(_ModuleData.FirstDeviceNumber), DevIndex);
-			_ModuleData.Devs[DevIndex].VCDrv_pDeviceDevice = &pdev->dev;
-			platform_set_drvdata(pdev, &_ModuleData.Devs[DevIndex]);				//damit wir im VCDrv_AM473X_remove() wissen welches def freigebene werden soll
+			VSDrv_InitDrvData(&_ModuleData.Devs[DevIndex]);			
+			_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber = MKDEV(MAJOR(_ModuleData.FirstDeviceNumber), DevIndex);
+			_ModuleData.Devs[DevIndex].VSDrv_pDeviceDevice = &pdev->dev;
+			platform_set_drvdata(pdev, &_ModuleData.Devs[DevIndex]);				//damit wir im VSDrv_AM473X_remove() wissen welches def freigebene werden soll
 			break;
 		}
 	}
 	if(DevIndex==-1){
 		printk(KERN_WARNING MODDEBUGOUTTEXT" no free Minor-Number found!\n"); return -EINVAL;}
 	else{
-		/*pr_devel(MODDEBUGOUTTEXT" use major/minor (%d:%d)\n", MAJOR(_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber), MINOR(_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber))*/;}
+		/*pr_devel(MODDEBUGOUTTEXT" use major/minor (%d:%d)\n", MAJOR(_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber), MINOR(_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber))*/;}
 
 
 	//>ccdc_cfg.base_addr 
@@ -279,7 +279,7 @@ int VCDrv_AM473X_probe(struct platform_device *pdev)
 		{printk(KERN_ERR MODDEBUGOUTTEXT" platform_get_irq() failed!\n"); return -ENODEV;}
 	if(devm_request_irq(&pdev->dev, 	/* device to request interrupt for */
 				IRQNumber,				/* Interrupt line to allocate */
-				VCDrv_VPFE_interrupt,	/* Function to be called when the IRQ occurs*/
+				VSDrv_VPFE_interrupt,	/* Function to be called when the IRQ occurs*/
 				0						/* IRQ Flags */,
 			    MODMODULENAME,			/* name wird in /proc/interrupts angezeigt */
 				&_ModuleData.Devs[DevIndex] /* wird dem CallBack mit gegeben*/) != 0 )
@@ -305,16 +305,16 @@ int VCDrv_AM473X_probe(struct platform_device *pdev)
 
 	//>dev init & fügt es hinzu
 	/**********************************************************************/
-	cdev_init(&_ModuleData.Devs[DevIndex].VCDrv_CDev, &VCDrv_fops);
-	_ModuleData.Devs[DevIndex].VCDrv_CDev.owner = THIS_MODULE;
-	_ModuleData.Devs[DevIndex].VCDrv_CDev.ops 	= &VCDrv_fops;	//notwendig in den quellen wird fops gesetzt?
+	cdev_init(&_ModuleData.Devs[DevIndex].VSDrv_CDev, &VSDrv_fops);
+	_ModuleData.Devs[DevIndex].VSDrv_CDev.owner = THIS_MODULE;
+	_ModuleData.Devs[DevIndex].VSDrv_CDev.ops 	= &VSDrv_fops;	//notwendig in den quellen wird fops gesetzt?
 
 	//fügt ein device hinzu, nach der fn können FileFns genutzt werden
-	res = cdev_add(&_ModuleData.Devs[DevIndex].VCDrv_CDev, _ModuleData.Devs[DevIndex].VCDrv_DeviceNumber, 1/*wie viele ab startNum*/);
+	res = cdev_add(&_ModuleData.Devs[DevIndex].VSDrv_CDev, _ModuleData.Devs[DevIndex].VSDrv_DeviceNumber, 1/*wie viele ab startNum*/);
 	if(res < 0)
 		printk(KERN_WARNING MODDEBUGOUTTEXT" can't add device!\n");
 	else
-		_ModuleData.Devs[DevIndex].VCDrv_IsCDevOpen = TRUE;
+		_ModuleData.Devs[DevIndex].VSDrv_IsCDevOpen = TRUE;
 
 
 	//> in Sysfs class eintragen
@@ -325,11 +325,11 @@ int VCDrv_AM473X_probe(struct platform_device *pdev)
 		char devName[128];
 		struct device *temp;
 
-		sprintf(devName, "%s%d", MODMODULENAME, MINOR(_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber));
+		sprintf(devName, "%s%d", MODMODULENAME, MINOR(_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber));
 		temp = device_create(
 				_ModuleData.pModuleClass, 	/* die Type classe */
 				NULL, 			/* pointer zum Eltern, dann wird das dev ein Kind vom parten*/
-				_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber, /* die nummer zum device */
+				_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber, /* die nummer zum device */
 				NULL,
 				devName			/*string for the device's name */
 				);
@@ -341,7 +341,7 @@ int VCDrv_AM473X_probe(struct platform_device *pdev)
 
 	// init von allem ist durch
 	printk(KERN_INFO MODDEBUGOUTTEXT" AM473X probe done (%d:%d)\n",
-		MAJOR(_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber), MINOR(_ModuleData.Devs[DevIndex].VCDrv_DeviceNumber));	
+		MAJOR(_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber), MINOR(_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber));	
 	_ModuleData.boIsMinorUsed[DevIndex] = TRUE;
 
 	return 0;
@@ -352,7 +352,7 @@ int VCDrv_AM473X_probe(struct platform_device *pdev)
 /****************************************************************************************************************/
 //wird aufgerufen wenn das AM473Xdev removed wird
 /****************************************************************************************************************/
-int VCDrv_AM473X_remove(struct platform_device *pdev)
+int VSDrv_AM473X_remove(struct platform_device *pdev)
 {
 	PDEVICE_DATA pDevData = (PDEVICE_DATA)platform_get_drvdata(pdev);
 	
@@ -360,13 +360,13 @@ int VCDrv_AM473X_remove(struct platform_device *pdev)
 	// darf kein UserThread mehr im Teiber sein bzw. noch reinspringen weil sonst... bum 	
     // IRQ & VPFERegs (ioremap) sind per devm_ (daher wie auto_ptr:-)
 	//http://haifux.org/lectures/323/haifux-devres.pdf
-	pr_devel(MODDEBUGOUTTEXT" VCDrv_AM473X_remove (%d:%d)\n", MAJOR(pDevData->VCDrv_DeviceNumber), MINOR(pDevData->VCDrv_DeviceNumber));
+	pr_devel(MODDEBUGOUTTEXT" VSDrv_AM473X_remove (%d:%d)\n", MAJOR(pDevData->VSDrv_DeviceNumber), MINOR(pDevData->VSDrv_DeviceNumber));
 	if(pDevData == NULL){
 		printk(KERN_WARNING MODDEBUGOUTTEXT" device pointer is zero!\n"); return -EFAULT;}
 
 	//-> VPFE stoppen, User raushohlen, Buffer verschieben
 	// aber keine Buffer freigeben da der User sie noch gemapped haben könnte (und wir auch dem pVMKernel nicht haben)
-	VCDrv_VPFE_Abort(pDevData);
+	VSDrv_VPFE_Abort(pDevData);
 
 	
 	//power off
@@ -376,15 +376,15 @@ int VCDrv_AM473X_remove(struct platform_device *pdev)
 
 	//device in der sysfs class löschen
 	if(!IS_ERR(_ModuleData.pModuleClass))	
-		device_destroy(_ModuleData.pModuleClass, pDevData->VCDrv_DeviceNumber);
+		device_destroy(_ModuleData.pModuleClass, pDevData->VSDrv_DeviceNumber);
 
 	//device löschen
-	if(pDevData->VCDrv_IsCDevOpen)
-		cdev_del(&pDevData->VCDrv_CDev);
-	pDevData->VCDrv_IsCDevOpen = FALSE;
+	if(pDevData->VSDrv_IsCDevOpen)
+		cdev_del(&pDevData->VSDrv_CDev);
+	pDevData->VSDrv_IsCDevOpen = FALSE;
 
 	
-	pDevData->VCDrv_State = VCDRV_STATE_PREINIT;
+	pDevData->VSDrv_State = VSDRV_STATE_PREINIT;
 	return 0;
 }
 
@@ -394,16 +394,16 @@ int VCDrv_AM473X_remove(struct platform_device *pdev)
 //fügt wenn ins FIFO den buffer hinzu (wenn STATE_RUNNING & noch frei)
 //versucht dann auch einen Buffer in die VPFE Unit zu ädden
 /****************************************************************************************************************/
-int VCDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
+int VSDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 {
 	unsigned long irqflags;
 	int result = 0;
-	spin_lock_irqsave(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------->
 
 	//> müssen im State running sein
-	if( pDevData->VCDrv_State != VCDRV_STATE_RUNNING){
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VCDrv_BUF_Alloc> state must be VCDRV_STATE_RUNNING!\n"); result=-EBUSY;
+	if( pDevData->VSDrv_State != VSDRV_STATE_RUNNING){
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> state must be VSDRV_STATE_RUNNING!\n"); result=-EBUSY;
 	}
 	else
 	{
@@ -433,10 +433,10 @@ int VCDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 
 
 	//> versuchen Buffer der Unit zu übergeben
-	VCDrv_VPFE_TryToAddNextBuffer_locked(pDevData);
+	VSDrv_VPFE_TryToAddNextBuffer_locked(pDevData);
 
 //<-----------------------------
-	spin_unlock_irqrestore(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 
 
 	return result;
@@ -448,12 +448,12 @@ int VCDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 //Achtung! wird vom HW-ISR aufgerufen
 // wenn Unit frei & läuft, und ein Buffer FIFO_JobsToDo dann der Unit übergeben
 /****************************************************************************************************************/
-void VCDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
+void VSDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 {	
 	VPFE_JOB tmpJob;
 
 	//> Unit am laufen? und Frei? und Buffer im FIFO
-	if(pDevData->VCDrv_State != VCDRV_STATE_RUNNING)
+	if(pDevData->VSDrv_State != VSDRV_STATE_RUNNING)
 		return;
 	if(vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000)
 		return;
@@ -462,7 +462,7 @@ void VCDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 
 	//> ok, Buffer aus FIFO der Unit adden
 	if( kfifo_get(&pDevData->FIFO_JobsToDo, &tmpJob) != 1) /*sicher ist sicher*/
-		{ pr_devel(MODDEBUGOUTTEXT"VCDrv_VPFE_TryToAddNextBuffer_locked> kfifo_get() failed!\n"); return;}
+		{ pr_devel(MODDEBUGOUTTEXT"VSDrv_VPFE_TryToAddNextBuffer_locked> kfifo_get() failed!\n"); return;}
 	vpfe_reg_write(pDevData, tmpJob.pDMA, VPFE_SDR_ADDR);
 
 	smp_mb();//ist nicht notwendig?
@@ -470,7 +470,7 @@ void VCDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 	//> nächstes Bild darf ins RAM
 	vpfe_wen_enable(pDevData, TRUE);
 
-	//pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_TryToAddNextBuffer_locked> add Buffer: 0x%llx\n", (u64)tmpJob.pDMA);
+	//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_TryToAddNextBuffer_locked> add Buffer: 0x%llx\n", (u64)tmpJob.pDMA);
 }
 
 
@@ -481,7 +481,7 @@ void VCDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 // - alle Buffer sind dann in FIFO_JobsDone,
 // - neuer STATE_PREINIT  
 /****************************************************************************************************************/
-int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
+int VSDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 {
 	const u32 MAX_WAIT_TIME_US = 100*1000;
 	u32 TimeDone_us = 0;
@@ -489,7 +489,7 @@ int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 	int result = 0;
 
 
-	spin_lock_irqsave(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------->
 
 	//> hält die UNIT an
@@ -518,8 +518,8 @@ int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 		tmpJob.ISRCounter 	= pDevData->VPFE_ISRCounter;
 
 		if( kfifo_put(&pDevData->FIFO_JobsDone, tmpJob) == 0 ){
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VCDrv_VPFE_Abort> can't add into FIFO_JobsDone\n");}
-		pr_devel(MODDEBUGOUTTEXT" VCDrv_VPFE_Abort> new Buffer: 0x%llx, (seq: %d) done\n", (u64)tmpJob.pDMA, tmpJob.ISRCounter);
+			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> can't add into FIFO_JobsDone\n");}
+		pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> new Buffer: 0x%llx, (seq: %d) done\n", (u64)tmpJob.pDMA, tmpJob.ISRCounter);
 	}
 	vpfe_reg_write(pDevData, 0x0000, VPFE_SDR_ADDR); //"This bit field is latched by VD."
 
@@ -546,14 +546,14 @@ int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 
 
 	//> alle Buffer aus .FIFO_JobsToDo >> .FIFO_JobsDone 
-	// im VCDrv_VPFE_AddBuffer() passen wir auf das alle Buffer aus FIFO_JobsToDo in FIFO_JobsDone passen
+	// im VSDrv_VPFE_AddBuffer() passen wir auf das alle Buffer aus FIFO_JobsToDo in FIFO_JobsDone passen
 	while ( kfifo_len(&pDevData->FIFO_JobsToDo) >= 1 )
 	{
 		VPFE_JOB tmpJob;
 
 		//siche ist sicher (noch Platz im FIFO?)
 		if( kfifo_avail(&pDevData->FIFO_JobsDone) < 1){
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VCDrv_VPFE_Abort> FIFO_JobsDone is full!\n"); result = -ENOMEM; break;}
+			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> FIFO_JobsDone is full!\n"); result = -ENOMEM; break;}
 
 		//Element aus FIFO_JobsToDo nehmen
 		if( kfifo_get(&pDevData->FIFO_JobsToDo, &tmpJob) == 1) 
@@ -561,12 +561,12 @@ int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 			tmpJob.boIsOk = FALSE; //damit wissen wir später das es ein Abort war
 
 			if( kfifo_put(&pDevData->FIFO_JobsDone, tmpJob) == 0){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" VCDrv_VPFE_Abort> kfifo_put() failed!\n"); result = -EINTR; break;}
+				printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> kfifo_put() failed!\n"); result = -EINTR; break;}
 			else
 				pr_devel(MODDEBUGOUTTEXT" - move Buffer FIFO_JobsToDo >> FIFO_JobsDone [0x%llx]\n",(u64)tmpJob.pDMA);			
 		}
 		else{
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VCDrv_VPFE_Abort> kfifo_get() failed!\n"); result = -EINTR; break;}
+			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> kfifo_get() failed!\n"); result = -EINTR; break;}
 
 	}//while FIFO_JobsToDo not empty
 
@@ -579,10 +579,10 @@ int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 
 
 	//> neuer State
-	pDevData->VCDrv_State = VCDRV_STATE_PREINIT;
+	pDevData->VSDrv_State = VSDRV_STATE_PREINIT;
 
  //<-----------------------------
-	spin_unlock_irqrestore(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 
 
 	return result;
@@ -595,17 +595,17 @@ int VCDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 //- reset des Waiters 
 //- neuer State (Running)
 /****************************************************************************************************************/
-int VCDrv_VPFE_Configure(PDEVICE_DATA pDevData)
+int VSDrv_VPFE_Configure(PDEVICE_DATA pDevData)
 {
 	unsigned long irqflags;
 	int result =0;
 
-	spin_lock_irqsave(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------->
 
 	//> steht die Unit noch?
-	if( pDevData->VCDrv_State != VCDRV_STATE_PREINIT)
-		{printk(KERN_WARNING MODDEBUGOUTTEXT "VCDrv_VPFE_Configure> state must be VCDRV_STATE_PREINIT!\n"); result = -EBUSY;}
+	if( pDevData->VSDrv_State != VSDRV_STATE_PREINIT)
+		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_VPFE_Configure> state must be VSDRV_STATE_PREINIT!\n"); result = -EBUSY;}
 	else
 	{
 		u32 iReg, regVal;
@@ -681,12 +681,12 @@ int VCDrv_VPFE_Configure(PDEVICE_DATA pDevData)
 
 		//> neuer State ist running
 		/**********************************************************/
-		pDevData->VCDrv_State = VCDRV_STATE_RUNNING;
+		pDevData->VSDrv_State = VSDRV_STATE_RUNNING;
 
-	}//state == VCDRV_STATE_PREINIT
+	}//state == VSDRV_STATE_PREINIT
 
 //<-----------------------------
-	spin_unlock_irqrestore(&pDevData->VCDrv_SpinLock, irqflags);
+	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 
 
 	return result;
