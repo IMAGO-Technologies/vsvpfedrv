@@ -40,7 +40,7 @@ deploy:
 	make clean
 	make
 	strip --strip-debug vsvpfedrv.ko
-	mv vsvpfedrv.ko vsvpfedrv$(shell uname -r)_$(shell uname -m).ko
+	mv vsvpfedrv.ko vsvpfedrv_$(shell uname -r)_$(shell uname -m).ko
 
 devel:
 	make 

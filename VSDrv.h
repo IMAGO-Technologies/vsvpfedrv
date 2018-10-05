@@ -22,7 +22,7 @@
 
 //> defines about the Module
 /******************************************************************************************/
-#define MODVERSION "1.0.0.0"
+#define MODVERSION "1.0.0.1"
 #define MODDATECODE __DATE__ " - " __TIME__
 #define MODLICENSE "GPL";
 #define MODDESCRIPTION "Kernel module for the VisionSensor VSPV VPFE(e) devices";

@@ -106,16 +106,24 @@ int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 	// http://elixir.free-electrons.com/linux/latest/source/drivers/char/mem.c
 	//  und wen hier down_write(&vma->vm_mm->mmap_sem); aufgerufen wird dann dead lock!
 
+	//marken das kein cache benutzt werden soll
+	//"mapping coherent buffers into userspace" http://4q8.de/?p=231
+	//https://stackoverflow.com/questions/34516847/what-is-the-difference-between-dma-mmap-coherent-and-remap-pfn-range
+	// "dma_mmap_coherent() is defined in dma-mapping.h as a wrapper around dma_mmap_attrs(). 
+	//  dma_mmap_attrs() tries to see if a set of dma_mmap_ops is associated with the device (struct device *dev) you are operating with, 
+	//  if not it calls dma_common_mmap() which eventually leads to a call to remap_pfn_range(), after setting the page protection as non-cacheable (see dma_common_mmap() in dma-mapping.c)"
+	// 		dma_common_mmap() > pgprot_noncached()
+	// 						  > (dma_mmap_from_coherent()) > remap_pfn_range()
+	//
+	// https://elixir.bootlin.com/linux/v4.8/source/drivers/media/v4l2-core/videobuf2-dma-contig.c#L175
+	//  dort wird das nicht gemacht aber dma_mmap_attrs() aufgerufen
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	//> mappen
  	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, size, vma->vm_page_prot) < 0)
 		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_mmap> remap_pfn_range() failed!\n"); return -EAGAIN;}
 
-	// wird im v4l2 auch gesetzt
-	//https://elixir.free-electrons.com/linux/v4.8/source/drivers/media/v4l2-core/videobuf2-dma-contig.c#L175
-	vma->vm_flags		|= VM_DONTEXPAND | VM_DONTDUMP; //https://bugs.launchpad.net/ubuntu/+source/blktap-dkms/+bug/1245009 VM_RESERVED bis 3.7
 	vma->vm_ops = NULL;	//sicher ist sicher
-
 
 	pr_devel(MODDEBUGOUTTEXT" - mmap> pVM: 0x%llx, pDMA: 0x%llx, Bytes: %zu, Flags: 0x%X\n", (u64)(vma->vm_start), (u64)(phys_addr), size, (uint) pgprot_val(vma->vm_page_prot) );
 
