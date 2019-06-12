@@ -63,11 +63,7 @@
 #include <linux/delay.h>		// für usleep_range
 #include <linux/platform_device.h>	// für platform_driver ...
 #include <linux/pm_runtime.h>	//für pm_runtim_*
-#if LINUX_VERSION_CODE != KERNEL_VERSION(2,6,32)
-	#include <asm/uaccess.h>	// für copy_to_user
-#else
-	#include <linux/uaccess.h>	// für copy_to_user
-#endif
+#include <linux/uaccess.h>	// für copy_to_user
 
 #include "am437x-vpfe_regs.h"
 
