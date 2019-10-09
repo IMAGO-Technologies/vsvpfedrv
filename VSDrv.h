@@ -1,7 +1,7 @@
 /*
- * VSDrv.h
+ * VisionSensor PV VPFE driver
  *
- * Copyright (C) 201x IMAGO Technologies GmbH
+ * Copyright (C) IMAGO Technologies GmbH
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -22,7 +22,7 @@
 
 //> defines about the Module
 /******************************************************************************************/
-#define MODVERSION "1.0.0.2"
+#define MODVERSION "1.0.1.0"
 #define MODDATECODE __DATE__ " - " __TIME__
 #define MODLICENSE "GPL";
 #define MODDESCRIPTION "Kernel module for the VisionSensor VSPV VPFE(e) devices";
@@ -137,16 +137,21 @@ typedef struct _VPFE_JOB
 	u32 		ISRCounter; 		//laufender Zähler, wird im ISR gezählt
 }  VPFE_JOB, *PVPFE_JOB;
 
+typedef struct sDMA_BUFFER {
+	void*		pVMKernel;
+	dma_addr_t	pDMAKernel;
+	size_t		anzBytes;
+} DMA_BUFFER;
 
 //Fast alle Infos zu einem VPFE Device zusammen
 typedef struct _DEVICE_DATA
 {		
 	//> Device	
 	//***************************************************************/
+	struct device*		dev;
 	u8					VSDrv_State;		//Zustand des Devices
 	struct cdev			VSDrv_CDev;			//das KernelObj vom Module	
 	bool				VSDrv_IsCDevOpen;	//VSDrv_CDev gültig
-	struct device*		VSDrv_pDeviceDevice;//platform_device::dev
 	spinlock_t 			VSDrv_SpinLock;		//lock für ein Device (IRQSave)
 	dev_t				VSDrv_DeviceNumber;	//Nummer von CHAR device
 
@@ -155,6 +160,8 @@ typedef struct _DEVICE_DATA
 	struct completion 	FIFO_Waiter;								//'sem' um auf ein Element in FIFO_JobsDone zu warten
 	DECLARE_KFIFO(FIFO_JobsToDo, VPFE_JOB, MAX_VPFE_JOBFIFO_SIZE);	//sind noch nicht in der VPFE Unit
 	DECLARE_KFIFO(FIFO_JobsDone, VPFE_JOB, MAX_VPFE_JOBFIFO_SIZE);	//sind nicht mehr in der VPFE Unit (kann aber auch abgebrochen worden sein)
+	
+	DMA_BUFFER	dma_buffer[MAX_VPFE_JOBFIFO_SIZE];
 	
 	//> VPFE
 	//***************************************************************/
@@ -177,7 +184,6 @@ typedef struct _MODULE_DATA
 	struct class	*pModuleClass;					// /sys/class/*
 
 } MODULE_DATA, *PMODULE_DATA;
-
 
 //Global vars
 extern MODULE_DATA _ModuleData;

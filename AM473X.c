@@ -1,7 +1,7 @@
 /*
- * AM473X.c
+ * VisionSensor PV VPFE driver - probe code
  *
- * AM473X(e) Probe code
+ * Copyright (C) IMAGO Technologies GmbH
  *
  * Copyright (C) 201x IMAGO Technologies GmbH
  *
@@ -17,8 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
- *
  */
 
 #include "VSDrv.h"
@@ -241,7 +239,7 @@ int VSDrv_AM473X_probe(struct platform_device *pdev)
 			DevIndex = i;
 			VSDrv_InitDrvData(&_ModuleData.Devs[DevIndex]);			
 			_ModuleData.Devs[DevIndex].VSDrv_DeviceNumber = MKDEV(MAJOR(_ModuleData.FirstDeviceNumber), DevIndex);
-			_ModuleData.Devs[DevIndex].VSDrv_pDeviceDevice = &pdev->dev;
+			_ModuleData.Devs[DevIndex].dev = &pdev->dev;
 			platform_set_drvdata(pdev, &_ModuleData.Devs[DevIndex]);				//damit wir im VSDrv_AM473X_remove() wissen welches def freigebene werden soll
 			break;
 		}
@@ -354,6 +352,7 @@ int VSDrv_AM473X_probe(struct platform_device *pdev)
 /****************************************************************************************************************/
 int VSDrv_AM473X_remove(struct platform_device *pdev)
 {
+	unsigned int i, releaseBufCount = 0;
 	PDEVICE_DATA pDevData = (PDEVICE_DATA)platform_get_drvdata(pdev);
 	
 	//Note: wenn AM473X_remove() aufgerufen wird, 
@@ -361,12 +360,24 @@ int VSDrv_AM473X_remove(struct platform_device *pdev)
     // IRQ & VPFERegs (ioremap) sind per devm_ (daher wie auto_ptr:-)
 	//http://haifux.org/lectures/323/haifux-devres.pdf
 	pr_devel(MODDEBUGOUTTEXT" VSDrv_AM473X_remove (%d:%d)\n", MAJOR(pDevData->VSDrv_DeviceNumber), MINOR(pDevData->VSDrv_DeviceNumber));
-	if(pDevData == NULL){
-		printk(KERN_WARNING MODDEBUGOUTTEXT" device pointer is zero!\n"); return -EFAULT;}
+	if (pDevData == NULL) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT" device pointer is zero!\n");
+		return -EFAULT;
+	}
 
-	//-> VPFE stoppen, User raushohlen, Buffer verschieben
-	// aber keine Buffer freigeben da der User sie noch gemapped haben könnte (und wir auch dem pVMKernel nicht haben)
+	//-> stop VPFE unit
 	VSDrv_VPFE_Abort(pDevData);
+
+	// Release buffers
+	for (i = 0; i < MAX_VPFE_JOBFIFO_SIZE; i++) {
+		if (pDevData->dma_buffer[i].pVMKernel != NULL) {
+			VSDrv_BUF_Free(pDevData, pDevData->dma_buffer[i].pVMKernel, pDevData->dma_buffer[i].pDMAKernel, pDevData->dma_buffer[i].anzBytes);
+			pDevData->dma_buffer[i].pVMKernel = NULL;
+			releaseBufCount++;
+		}
+	}
+	if (releaseBufCount > 0)
+		dev_warn(pDevData->dev, " released %u lost DMA buffers\n", releaseBufCount);
 
 	
 	//power off

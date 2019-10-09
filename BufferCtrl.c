@@ -1,9 +1,7 @@
 /*
- * BufferCtrl.c
+ * VisionSensor PV VPFE driver - image buffer control
  *
- * handel the file read/write/io actions
- *
- * Copyright (C) 201x IMAGO Technologies GmbH
+ * Copyright (C) IMAGO Technologies GmbH
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -17,56 +15,57 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
- *
  */
 
 #include "VSDrv.h"
-
 
 /****************************************************************************************************************/
 //legt DMASpeicher an
 /****************************************************************************************************************/
 int VSDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMAKernel, size_t *panzBytes)
 {
-	//> die AOI muss gültig und fix sein (hätte nicht auch ein smp_mb() ausgereicht?)
-	u8 tmpState;
 	unsigned long irqflags;
-	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
-//----------------------------->
-	tmpState = pDevData->VSDrv_State;	
-//<-----------------------------
-	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
-	if( tmpState != VSDRV_STATE_RUNNING)	
-		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> state must be VSDRV_STATE_RUNNING!\n"); return -EBUSY;}
+	unsigned int i;
+
+	//> die AOI muss gültig und fix sein
+	if (pDevData->VSDrv_State != VSDRV_STATE_RUNNING) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> state must be VSDRV_STATE_RUNNING!\n");
+		return -EBUSY;
+	}
 
 	//Bild größe errechnen
 	*panzBytes = pDevData->VPFE_Width * pDevData->VPFE_Height;
 	*panzBytes *= (pDevData->VPFE_Is16BitPixel) ? (2) : (1);
 	*panzBytes = PAGE_ALIGN(*panzBytes);
 
-
 	//> "Allocate some uncached, unbuffered memory for a device for
 	//   performing DMA. This function allocates pages, and will
 	//   return the CPU-viewed address, and sets @handle to be the
 	//   device-viewed address. "
-	*ppVMKernel = dma_alloc_coherent(pDevData->VSDrv_pDeviceDevice, *panzBytes, ppDMAKernel, GFP_KERNEL /*kann einen Sleep beim Alloc machen*/);
-	if( (*ppVMKernel) == NULL )
- 		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> dma_alloc_coherent() failed!\n"); return -ENOMEM;}
+	*ppVMKernel = dma_alloc_coherent(pDevData->dev, *panzBytes, ppDMAKernel, GFP_KERNEL /*kann einen Sleep beim Alloc machen*/);
+	if( (*ppVMKernel) == NULL ) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> dma_alloc_coherent() failed!\n");
+		return -ENOMEM;
+	}
 
 	pr_devel(MODDEBUGOUTTEXT" - alloc> pVM: 0x%p, pDMA: 0x%llx, Bytes: %zu\n", *ppVMKernel, (u64)(*ppDMAKernel), *panzBytes);
 
-
-#ifdef DEBUG
-	//nur zum Test was in den Buffer schreiben
-	if( *panzBytes >= 64)
-	{
-		for(tmpState=0; tmpState<64; tmpState++)
-			((u8*)(*ppVMKernel))[tmpState] = tmpState;
-		((u32*)(*ppVMKernel))[0] =(u32) *ppVMKernel;
-		((u32*)(*ppVMKernel))[1] =(u32) *ppDMAKernel;
+	// Store buffer context
+	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
+	for (i = 0; i < MAX_VPFE_JOBFIFO_SIZE; i++) {
+		if (pDevData->dma_buffer[i].pVMKernel == NULL) {
+			pDevData->dma_buffer[i].pVMKernel = *ppVMKernel;
+			pDevData->dma_buffer[i].pDMAKernel = *ppDMAKernel;
+			pDevData->dma_buffer[i].anzBytes = *panzBytes;
+			break;
+		}
 	}
-#endif	
+	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
+	if (i == MAX_VPFE_JOBFIFO_SIZE) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> Maximum number of bufferes exceeded!\n");
+		VSDrv_BUF_Free(pDevData, *ppVMKernel, *ppDMAKernel, *panzBytes);
+		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -77,8 +76,8 @@ int VSDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 /****************************************************************************************************************/
 void VSDrv_BUF_Free(PDEVICE_DATA pDevData, void* pVMKernel, dma_addr_t pDMAKernel, size_t anzBytes)
 {
-	pr_devel(MODDEBUGOUTTEXT" - free> pVM: 0x%p, pDMA: 0x%llx, Bytes: %zu\n", pVMKernel, (u64)(pDMAKernel), anzBytes);
-	dma_free_coherent(pDevData->VSDrv_pDeviceDevice, anzBytes, pVMKernel, pDMAKernel);
+	dev_printk(KERN_DEBUG, pDevData->dev, "free buffer VM: 0x%p, DMA: 0x%x, bytes: %zu\n", pVMKernel, (u32)pDMAKernel, anzBytes);
+	dma_free_coherent(pDevData->dev, anzBytes, pVMKernel, pDMAKernel);
 }
 
 
@@ -120,8 +119,10 @@ int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	//> mappen
- 	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, size, vma->vm_page_prot) < 0)
-		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_mmap> remap_pfn_range() failed!\n"); return -EAGAIN;}
+ 	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, size, vma->vm_page_prot) < 0) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_mmap> remap_pfn_range() failed!\n");
+		return -EAGAIN;
+	}
 
 	vma->vm_ops = NULL;	//sicher ist sicher
 
@@ -146,16 +147,11 @@ int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroke
 	u8 tmpState;
 	int result =0;
 
-
 	//> sind die FIFOs gültig?
-	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
-//----------------------------->
-	tmpState = pDevData->VSDrv_State;	
-//<-----------------------------
-	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
-	if( (tmpState!= VSDRV_STATE_PREINIT) && (tmpState!= VSDRV_STATE_RUNNING))
-		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_WaitFor> state must be VSDRV_STATE_PREINIT or RUNNING!\n"); return -EBUSY;}
-
+	if (pDevData->VSDrv_State != VSDRV_STATE_PREINIT && pDevData->VSDrv_State != VSDRV_STATE_RUNNING) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_WaitFor> state must be VSDRV_STATE_PREINIT or RUNNING!\n");
+		return -EBUSY;
+	}
 
 	//> warten
 	// aufwachen durch Signal, complete() vom HWI, oder User [Abort], bzw TimeOut
@@ -168,54 +164,59 @@ int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroke
 	{	
 		//Note: unterbrechbar(durch gdb), abbrechbar durch kill -9 & kill -15(term) 
 		//  noch ist nix passiert, Kernel darf den Aufruf wiederhohlen ohne den User zu benachrichtigen							
-		if( wait_for_completion_interruptible(&pDevData->FIFO_Waiter) != 0)
-			{pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_interruptible() failed!\n"); return -ERESTARTSYS;}	
+		if (wait_for_completion_interruptible(&pDevData->FIFO_Waiter) != 0) {
+			pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_interruptible() failed!\n");
+			return -ERESTARTSYS;
+		}
 	}
 	else if ( TimeOut_ms == 0 )
 	{
-		if( try_wait_for_completion(&pDevData->FIFO_Waiter) != TRUE )
-			{ pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> try_wait_for_completion(), timeout!\n"); return 0;}
+		if (!try_wait_for_completion(&pDevData->FIFO_Waiter)) {
+			pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> try_wait_for_completion(), timeout!\n");
+			return 0;
+		}
 	}
 	else
 	{
 		//Note: nicht (durch GDB) abbrechbar > wait_for_common(x, timeout, TASK_UNINTERRUPTIBLE);
 		unsigned long jiffiesTimeOut = msecs_to_jiffies(TimeOut_ms);
 		int waitRes = wait_for_completion_timeout(&pDevData->FIFO_Waiter, jiffiesTimeOut);
-		if( waitRes == 0 )
-			{ pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_timeout(), timeout!\n"); return 0;}
-		else if ( waitRes < 0 )
-			{ printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_timeout(), failed!\n"); return -EINTR;}
+		if (waitRes == 0) {
+			pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_timeout(), timeout!\n");
+			return 0;
+		}
+		else if (waitRes < 0) {
+			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_timeout(), failed!\n");
+			return -EINTR;
+		}
 	}
-
 
 
 	//> Buffer aus FIFO entnehmen (warten war erfolgreich [könnte aber auch durch ein abort sein])
 	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------->
+	//beim Abort, muss es keinen Job im FIFO geben
+	*pIsBroken 	= TRUE;
+
+	//im FIFO was drin?
+	if( kfifo_len( &pDevData->FIFO_JobsDone)>=1 )
 	{
-		//beim Abort, muss es keinen Job im FIFO geben
-		*pIsBroken 	= TRUE;
-
-		//im FIFO was drin?
-		if( kfifo_len( &pDevData->FIFO_JobsDone)>=1 )
-		{
-			VPFE_JOB tmpJob;
-			if( kfifo_get(&pDevData->FIFO_JobsDone, &tmpJob) != 1) /*sicher ist sicher*/
-				{ result = -EINTR; printk(KERN_WARNING MODDEBUGOUTTEXT"VSDrv_BUF_WaitFor> kfifo_get() failed!\n"); }
-
-
-			*pIsBroken 		= !tmpJob.boIsOk; //ISR(): setzt TRUE, VSDrv_BUF_Abort() setzt FALSE
-			*pImageNumber	= tmpJob.ISRCounter;
-			*ppDMAKernel	= tmpJob.pDMA;
-
+		VPFE_JOB tmpJob;
+		if (kfifo_get(&pDevData->FIFO_JobsDone, &tmpJob) != 1) { /*sicher ist sicher*/
+			result = -EINTR;
+			printk(KERN_WARNING MODDEBUGOUTTEXT"VSDrv_BUF_WaitFor> kfifo_get() failed!\n");
 		}
-		else
-			pr_devel(MODDEBUGOUTTEXT" - VSDrv_BUF_WaitFor> wake up, without buffer!\n");
+
+
+		*pIsBroken 		= !tmpJob.boIsOk; //ISR(): setzt TRUE, VSDrv_BUF_Abort() setzt FALSE
+		*pImageNumber	= tmpJob.ISRCounter;
+		*ppDMAKernel	= tmpJob.pDMA;
 
 	}
+	else
+		pr_devel(MODDEBUGOUTTEXT" - VSDrv_BUF_WaitFor> wake up, without buffer!\n");
 //<-----------------------------
 	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 
 	return result;
 }
-

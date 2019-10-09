@@ -1,9 +1,7 @@
 /*
- * VSDrv.c
+ * VisionSensor PV VPFE driver
  *
- * The entry point to the kernel module
- *
- * Copyright (C) 201x IMAGO Technologies GmbH
+ * Copyright (C) IMAGO Technologies GmbH
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -170,7 +168,7 @@ void VSDrv_InitDrvData(PDEVICE_DATA pDevData)
 	//***************************************************************/
 	pDevData->VSDrv_State 		= VSDRV_STATE_UNUSED;
 	pDevData->VSDrv_IsCDevOpen	= FALSE;
-	pDevData->VSDrv_pDeviceDevice= NULL;
+	pDevData->dev = NULL;
 	//wird im probe() gemacht
 	// pDevData->VSDrv_CDev;
 	// pDevData->VSDrv_DeviceNumber;
