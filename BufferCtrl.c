@@ -144,7 +144,6 @@ int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroken, u32 *pImageNumber, dma_addr_t *ppDMAKernel)
 {
 	unsigned long irqflags;
-	u8 tmpState;
 	int result =0;
 
 	//> sind die FIFOs gültig?
