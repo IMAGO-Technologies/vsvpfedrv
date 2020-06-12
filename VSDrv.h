@@ -22,7 +22,7 @@
 
 //> defines about the Module
 /******************************************************************************************/
-#define MODVERSION "1.0.1.0"
+#define MODVERSION "1.0.2.0"
 #define MODDATECODE __DATE__ " - " __TIME__
 #define MODLICENSE "GPL";
 #define MODDESCRIPTION "Kernel module for the VisionSensor VSPV VPFE(e) devices";
@@ -170,8 +170,7 @@ typedef struct _DEVICE_DATA
 	u32 		VPFE_Width;
 	u32	 		VPFE_Height;
 	bool 		VPFE_Is16BitPixel;
-	bool		VPFE_IsStartFrameDone;	//sind wir in einem Bild?
-
+	u32			VPFE_CurrentSAddr;
 } DEVICE_DATA, *PDEVICE_DATA;
 
 //Fast alles zusammen was zu diesem Module gehört, (Note: n VPFEdevs für das Module, Module wird nur 1x geladen)

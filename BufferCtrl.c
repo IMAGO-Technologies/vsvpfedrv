@@ -29,7 +29,7 @@ int VSDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 
 	//> die AOI muss gültig und fix sein
 	if (pDevData->VSDrv_State != VSDRV_STATE_RUNNING) {
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> state must be VSDRV_STATE_RUNNING!\n");
+		dev_warn(pDevData->dev, "VSDrv_BUF_Alloc: state must be VSDRV_STATE_RUNNING!\n");
 		return -EBUSY;
 	}
 
@@ -38,17 +38,15 @@ int VSDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 	*panzBytes *= (pDevData->VPFE_Is16BitPixel) ? (2) : (1);
 	*panzBytes = PAGE_ALIGN(*panzBytes);
 
-	//> "Allocate some uncached, unbuffered memory for a device for
-	//   performing DMA. This function allocates pages, and will
-	//   return the CPU-viewed address, and sets @handle to be the
-	//   device-viewed address. "
-	*ppVMKernel = dma_alloc_coherent(pDevData->dev, *panzBytes, ppDMAKernel, GFP_KERNEL /*kann einen Sleep beim Alloc machen*/);
+	// Allocate buffer from CMA. We need no kernel mapping, the returned value is only a cookie:
+	*ppVMKernel = dma_alloc_attrs(pDevData->dev, *panzBytes, ppDMAKernel, GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
+	
 	if( (*ppVMKernel) == NULL ) {
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> dma_alloc_coherent() failed!\n");
+		dev_warn(pDevData->dev, "VSDrv_BUF_Alloc: dma_alloc_attrs() failed!\n");
 		return -ENOMEM;
 	}
 
-	pr_devel(MODDEBUGOUTTEXT" - alloc> pVM: 0x%p, pDMA: 0x%llx, Bytes: %zu\n", *ppVMKernel, (u64)(*ppDMAKernel), *panzBytes);
+	dev_dbg(pDevData->dev, "VSDrv_BUF_Alloc: pVM: 0x%p, pDMA: 0x%llx, Bytes: %zu\n", *ppVMKernel, (u64)(*ppDMAKernel), *panzBytes);
 
 	// Store buffer context
 	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
@@ -62,7 +60,7 @@ int VSDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 	}
 	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 	if (i == MAX_VPFE_JOBFIFO_SIZE) {
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> Maximum number of bufferes exceeded!\n");
+		dev_warn(pDevData->dev, "VSDrv_BUF_Alloc: Maximum number of bufferes exceeded!\n");
 		VSDrv_BUF_Free(pDevData, *ppVMKernel, *ppDMAKernel, *panzBytes);
 		return -ENOMEM;
 	}
@@ -76,8 +74,8 @@ int VSDrv_BUF_Alloc(PDEVICE_DATA pDevData, void** ppVMKernel, dma_addr_t * ppDMA
 /****************************************************************************************************************/
 void VSDrv_BUF_Free(PDEVICE_DATA pDevData, void* pVMKernel, dma_addr_t pDMAKernel, size_t anzBytes)
 {
-	dev_printk(KERN_DEBUG, pDevData->dev, "free buffer VM: 0x%p, DMA: 0x%x, bytes: %zu\n", pVMKernel, (u32)pDMAKernel, anzBytes);
-	dma_free_coherent(pDevData->dev, anzBytes, pVMKernel, pDMAKernel);
+	dev_dbg(pDevData->dev, "free buffer VM: 0x%p, DMA: 0x%x, bytes: %zu\n", pVMKernel, (u32)pDMAKernel, anzBytes);
+	dma_free_attrs(pDevData->dev, anzBytes, pVMKernel, pDMAKernel, DMA_ATTR_NO_KERNEL_MAPPING);
 }
 
 
@@ -87,6 +85,7 @@ void VSDrv_BUF_Free(PDEVICE_DATA pDevData, void* pVMKernel, dma_addr_t pDMAKerne
 /****************************************************************************************************************/
 int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 {
+	PDEVICE_DATA pDevData = (PDEVICE_DATA)pFile->private_data;
 	size_t size = vma->vm_end - vma->vm_start;	
 	phys_addr_t phys_addr = (phys_addr_t)vma->vm_pgoff << PAGE_SHIFT; // vm_pgoff; <>  "Offset (within vm_file) in PAGE_SIZE"
 
@@ -105,28 +104,17 @@ int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 	// http://elixir.free-electrons.com/linux/latest/source/drivers/char/mem.c
 	//  und wen hier down_write(&vma->vm_mm->mmap_sem); aufgerufen wird dann dead lock!
 
-	//marken das kein cache benutzt werden soll
-	//"mapping coherent buffers into userspace" http://4q8.de/?p=231
-	//https://stackoverflow.com/questions/34516847/what-is-the-difference-between-dma-mmap-coherent-and-remap-pfn-range
-	// "dma_mmap_coherent() is defined in dma-mapping.h as a wrapper around dma_mmap_attrs(). 
-	//  dma_mmap_attrs() tries to see if a set of dma_mmap_ops is associated with the device (struct device *dev) you are operating with, 
-	//  if not it calls dma_common_mmap() which eventually leads to a call to remap_pfn_range(), after setting the page protection as non-cacheable (see dma_common_mmap() in dma-mapping.c)"
-	// 		dma_common_mmap() > pgprot_noncached()
-	// 						  > (dma_mmap_from_coherent()) > remap_pfn_range()
-	//
-	// https://elixir.bootlin.com/linux/v4.8/source/drivers/media/v4l2-core/videobuf2-dma-contig.c#L175
-	//  dort wird das nicht gemacht aber dma_mmap_attrs() aufgerufen
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	vma->vm_page_prot = __pgprot_modify(vma->vm_page_prot, L_PTE_MT_MASK, L_PTE_MT_WRITEBACK | L_PTE_XN);
 
 	//> mappen
  	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, size, vma->vm_page_prot) < 0) {
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_mmap> remap_pfn_range() failed!\n");
+		dev_warn(pDevData->dev, "VSDrv_BUF_mmap: remap_pfn_range() failed!\n");
 		return -EAGAIN;
 	}
 
 	vma->vm_ops = NULL;	//sicher ist sicher
 
-	pr_devel(MODDEBUGOUTTEXT" - mmap> pVM: 0x%llx, pDMA: 0x%llx, Bytes: %zu, Flags: 0x%X\n", (u64)(vma->vm_start), (u64)(phys_addr), size, (uint) pgprot_val(vma->vm_page_prot) );
+	dev_dbg(pDevData->dev, "VSDrv_BUF_mmap: pVM: 0x%llx, pDMA: 0x%llx, bytes: %zu, flags: 0x%X\n", (u64)(vma->vm_start), (u64)(phys_addr), size, (uint) pgprot_val(vma->vm_page_prot) );
 
 	return 0;	
 }
@@ -144,11 +132,12 @@ int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroken, u32 *pImageNumber, dma_addr_t *ppDMAKernel)
 {
 	unsigned long irqflags;
-	int result =0;
+	VPFE_JOB job;
+	int result = 0;
 
 	//> sind die FIFOs gültig?
 	if (pDevData->VSDrv_State != VSDRV_STATE_PREINIT && pDevData->VSDrv_State != VSDRV_STATE_RUNNING) {
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_WaitFor> state must be VSDRV_STATE_PREINIT or RUNNING!\n");
+		dev_warn(pDevData->dev, "VSDrv_BUF_WaitFor: state must be VSDRV_STATE_PREINIT or RUNNING!\n");
 		return -EBUSY;
 	}
 
@@ -159,19 +148,19 @@ int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroke
 	//damit wir beim TimeOut einfach zurück springen können
 	*ppDMAKernel = 0; 
 
-	if( TimeOut_ms == 0xFFFFFFFF )
+	if (TimeOut_ms == 0xFFFFFFFF)
 	{	
 		//Note: unterbrechbar(durch gdb), abbrechbar durch kill -9 & kill -15(term) 
 		//  noch ist nix passiert, Kernel darf den Aufruf wiederhohlen ohne den User zu benachrichtigen							
 		if (wait_for_completion_interruptible(&pDevData->FIFO_Waiter) != 0) {
-			pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_interruptible() failed!\n");
+			dev_dbg(pDevData->dev, "VSDrv_BUF_WaitFor: wait_for_completion_interruptible() failed\n");
 			return -ERESTARTSYS;
 		}
 	}
 	else if ( TimeOut_ms == 0 )
 	{
 		if (!try_wait_for_completion(&pDevData->FIFO_Waiter)) {
-			pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> try_wait_for_completion(), timeout!\n");
+			dev_dbg(pDevData->dev, "VSDrv_BUF_WaitFor: try_wait_for_completion() timeout\n");
 			return 0;
 		}
 	}
@@ -181,11 +170,11 @@ int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroke
 		unsigned long jiffiesTimeOut = msecs_to_jiffies(TimeOut_ms);
 		int waitRes = wait_for_completion_timeout(&pDevData->FIFO_Waiter, jiffiesTimeOut);
 		if (waitRes == 0) {
-			pr_devel(MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_timeout(), timeout!\n");
+			dev_dbg(pDevData->dev, "VSDrv_BUF_WaitFor: wait_for_completion_timeout() timeout\n");
 			return 0;
 		}
 		else if (waitRes < 0) {
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_BUF_WaitFor> wait_for_completion_timeout(), failed!\n");
+			dev_warn(pDevData->dev, "VSDrv_BUF_WaitFor: wait_for_completion_timeout() failed\n");
 			return -EINTR;
 		}
 	}
@@ -198,24 +187,25 @@ int VSDrv_BUF_WaitFor(PDEVICE_DATA pDevData, const u32 TimeOut_ms, u32 *pIsBroke
 	*pIsBroken 	= TRUE;
 
 	//im FIFO was drin?
-	if( kfifo_len( &pDevData->FIFO_JobsDone)>=1 )
-	{
-		VPFE_JOB tmpJob;
-		if (kfifo_get(&pDevData->FIFO_JobsDone, &tmpJob) != 1) { /*sicher ist sicher*/
-			result = -EINTR;
-			printk(KERN_WARNING MODDEBUGOUTTEXT"VSDrv_BUF_WaitFor> kfifo_get() failed!\n");
-		}
-
-
-		*pIsBroken 		= !tmpJob.boIsOk; //ISR(): setzt TRUE, VSDrv_BUF_Abort() setzt FALSE
-		*pImageNumber	= tmpJob.ISRCounter;
-		*ppDMAKernel	= tmpJob.pDMA;
-
+	if (kfifo_get(&pDevData->FIFO_JobsDone, &job)) {
+		*pIsBroken 		= !job.boIsOk;
+		*pImageNumber	= job.ISRCounter;
+		*ppDMAKernel	= job.pDMA;
 	}
-	else
-		pr_devel(MODDEBUGOUTTEXT" - VSDrv_BUF_WaitFor> wake up, without buffer!\n");
+	else {
+		dev_dbg(pDevData->dev, "VSDrv_BUF_WaitFor: wake up without buffer\n");
+	}
 //<-----------------------------
 	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
+
+	// handle cache
+	if (*ppDMAKernel != 0) {
+		size_t dma_size = pDevData->VPFE_Width * pDevData->VPFE_Height;
+		if (pDevData->VPFE_Is16BitPixel)
+			dma_size *= 2;
+		dma_size = PAGE_ALIGN(dma_size);
+		dma_sync_single_for_cpu(pDevData->dev, *ppDMAKernel, dma_size, DMA_FROM_DEVICE);
+	}
 
 	return result;
 }

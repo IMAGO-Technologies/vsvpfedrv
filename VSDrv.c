@@ -189,9 +189,7 @@ void VSDrv_InitDrvData(PDEVICE_DATA pDevData)
 	pDevData->VPFE_Width		= VPFE_DEFAULT_Width;
 	pDevData->VPFE_Height		= VPFE_DEFAULT_VPFE_Height;
 	pDevData->VPFE_Is16BitPixel	= VPFE_DEFAULT_VPFE_Is16BitPixel;
-	pDevData->VPFE_IsStartFrameDone	= FALSE;
-
-
+	pDevData->VPFE_CurrentSAddr	= 0;
 
 	pDevData->VSDrv_State = VSDRV_STATE_PREINIT;
 }

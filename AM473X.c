@@ -129,82 +129,63 @@ irqreturn_t VSDrv_VPFE_interrupt(int irq, void *dev)
 	u32 vpfe_irq_flags;	
 	unsigned long irqflags;
 	PDEVICE_DATA pDevData = (PDEVICE_DATA)dev;
+	VPFE_JOB job;
 
 	vpfe_irq_flags = vpfe_reg_read(pDevData, VPFE_IRQ_STS);
 
-
-
 	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
-//----------------------------->
 
-	//je nach IRQFlag
-	//> Bild-Anfang (nach der 1. Zeile)
-	if (vpfe_irq_flags & VPFE_VDINT0)
+	if (vpfe_irq_flags & VPFE_VDINT0)	// frame start after first line
 	{
+		u32 sdr_addr = vpfe_reg_read(pDevData, VPFE_SDR_ADDR);
+
 		//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT0)\n");
 
-		//nicht mehr ins RAM schreiben  
-		//Note: 
-		// - ohne das würde die Einheit das Bild wieder überschreiben
-		// - im Prinzip eine RaceCond, da wenn innerhalb der 1. Zeile VSDrv_VPFE_TryToAddNextBuffer_locked() aufgerufen wird
-		//  bekommt der User ein schwarzes Bild
-		vpfe_wen_enable(pDevData, FALSE);
-	
-		//BildZähler erhöhen
+		// increase frame counter
 		pDevData->VPFE_ISRCounter++;
 
-		//Note:
-		// es muss sichergestellt werden das (wenn ein Bild eingezogen werden soll) zuerst VPFE_VDINT0 dann VPFE_VDINT1 kommt
-		// sonnst kann es sein:
-		//  VSDrv_VPFE_TryToAddNextBuffer_locked() setzt inner halb eines Bildes, VPFE_SDR_ADDR und WEN=true
-		//  dann kommt VPFE_VDINT1 und setzt dan den ptr auf NULL zurück (ohne das gerapped wurde)  (WEN bleibt auf true da VPFE_VDINT0 verpasst wurde)
-		//  mit den nächsten VD werden die Register übernommen  ==> BUM
-		if( (vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000) && (pDevData->VPFE_IsStartFrameDone==FALSE) )
-			pDevData->VPFE_IsStartFrameDone = TRUE;
+		// if the image transfer has started (valid start address), store the
+		// address for the end interrupt (VPFE_VDINT1):
+		if (sdr_addr != 0) {
+			pDevData->VPFE_CurrentSAddr = sdr_addr;
+		}
+
+		// do we have a new buffer?
+		if (kfifo_get(&pDevData->FIFO_JobsToDo, &job)) {
+			// set the destination adddress for the next frame:
+			vpfe_reg_write(pDevData, job.pDMA, VPFE_SDR_ADDR);
+			if (sdr_addr == 0)
+				vpfe_wen_enable(pDevData, TRUE);	// write enable was not active
+		} else if (sdr_addr != 0) {
+			// don't use address for next frame, may be activated by VSDrv_VPFE_TryToAddNextBuffer_locked() again
+			vpfe_wen_enable(pDevData, FALSE);
+			vpfe_reg_write(pDevData, 0, VPFE_SDR_ADDR);
+		}
 	}
-
-	//> Bild-Ende (nach der letzen Zeile)
-	else if ( (vpfe_irq_flags & VPFE_VDINT1) && (pDevData->VPFE_IsStartFrameDone==TRUE) )
+	else if (vpfe_irq_flags & VPFE_VDINT1)	// frame end after last line
 	{
-		//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT1)\n");
-
-		//warten wir auf ein Bild?
-		if( vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000 )
+		// was the tranfer started for this frame?
+		if (pDevData->VPFE_CurrentSAddr != 0)
 		{
-			//> ja JOB erzeugen
-			VPFE_JOB tmpJob;
-			tmpJob.pDMA			= vpfe_reg_read(pDevData, VPFE_SDR_ADDR);
-			tmpJob.boIsOk 		= TRUE;
-			tmpJob.ISRCounter 	= pDevData->VPFE_ISRCounter;
+			// store buffer into queue
+			job.pDMA		= pDevData->VPFE_CurrentSAddr;
+			job.boIsOk 		= TRUE;
+			job.ISRCounter 	= pDevData->VPFE_ISRCounter;
+			pDevData->VPFE_CurrentSAddr = 0;
 
 			//> und FIFO adden (es ist immer genug Platz)
-			if( kfifo_avail(&pDevData->FIFO_JobsDone) < 1 ){
-				pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt()> FIFO_JobsDone is full\n");}
-			else
-			{
-				if( kfifo_put(&pDevData->FIFO_JobsDone, tmpJob) == 0 ){
-					pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt> can't add into FIFO_JobsDone\n");}
+			if (kfifo_put(&pDevData->FIFO_JobsDone, job) == 0) {
+				dev_warn(pDevData->dev, "VSDrv_VPFE_interrupt(): FIFO_JobsDone queue is full\n");
+			}
+			else {
+				//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT1)> new Buffer: 0x%llx, (seq: %d) done\n", (u64) job.pDMA, job.ISRCounter);
 
-				//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_interrupt(VPFE_VDINT1)> new Buffer: 0x%llx, (seq: %d) done\n", (u64) tmpJob.pDMA, tmpJob.ISRCounter);
-
-
-				//> Waiter aufwecken (hat Zähler)
+				// wake up waiting thread
 				complete(&pDevData->FIFO_Waiter);
-
-			}//platz im FIFO_JobsDone
-
-			//> Unit als "frei" marken
-			vpfe_reg_write(pDevData, 0x0000, VPFE_SDR_ADDR);
-			pDevData->VPFE_IsStartFrameDone = FALSE;
-
-		}//if warten aufs Bild 
-
-		//> versuchen neuen Buffer zu adden
-		VSDrv_VPFE_TryToAddNextBuffer_locked(pDevData);
-
-	}//if BildEnde ISR
+			}
+		}
+	}
 		
-//<-----------------------------
 	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
 
 	//> IRQ Flags löschen
@@ -409,46 +390,44 @@ int VSDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 {
 	unsigned long irqflags;
 	int result = 0;
+	size_t dma_size;
+
+	// handle cache first
+	dma_size = pDevData->VPFE_Width * pDevData->VPFE_Height;
+	dma_size *= (pDevData->VPFE_Is16BitPixel) ? (2) : (1);
+	dma_size = PAGE_ALIGN(dma_size);
+	dma_sync_single_for_device(pDevData->dev, pDMAKernelBuffer, dma_size, DMA_FROM_DEVICE);
+
 	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
-//----------------------------->
 
-	//> müssen im State running sein
-	if( pDevData->VSDrv_State != VSDRV_STATE_RUNNING){
-		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> state must be VSDRV_STATE_RUNNING!\n"); result=-EBUSY;
+	if (pDevData->VSDrv_State != VSDRV_STATE_RUNNING) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_BUF_Alloc> state must be VSDRV_STATE_RUNNING!\n");
+		result = -EBUSY;
+	} else {
+		//noch Platz? (.FIFO_JobsDone), es müssen passen
+		// - alle (möglichen) laufenden
+		// - da beim AbortBuffer alle Jobs aus .FIFO_JobsToDo nach .FIFO_JobsDone verschoben werden
+		u64 SizeNeeded = kfifo_len(&pDevData->FIFO_JobsToDo);
+		SizeNeeded += 1;
+		if (kfifo_avail(&pDevData->FIFO_JobsDone) < SizeNeeded) {
+			printk(KERN_WARNING MODDEBUGOUTTEXT" Locked_ioctl> FIFO_JobsDone is too full\n");
+			result = -ENOMEM;
+		} else {
+			// add job to queue
+			VPFE_JOB job = {0};
+
+			job.pDMA = pDMAKernelBuffer;
+			if (kfifo_put(&pDevData->FIFO_JobsToDo, job) == 0) {
+				printk(KERN_WARNING MODDEBUGOUTTEXT" Locked_ioctl: can't add job into FIFO_JobsToDo\n");
+				result = -ENOMEM;
+			}
+		}
 	}
-	else
-	{
-		//ist noch Platz (.FIFO_JobsToDo)?
-		if( kfifo_avail(&pDevData->FIFO_JobsToDo) < 1 ){
-			printk(KERN_WARNING MODDEBUGOUTTEXT" Locked_ioctl> FIFO_JobsToDo is full\n"); result = -ENOMEM;}
-		else
-		{
-			//noch Platz? (.FIFO_JobsDone), es müssen passen
-			// - alle (möglichen) laufenden
-			// - da beim AbortBuffer alle Jobs aus .FIFO_JobsToDo nach .FIFO_JobsDone verschoben werden
-			u64 SizeNeeded = kfifo_len(&pDevData->FIFO_JobsToDo);
-			SizeNeeded += 1;
-			if( kfifo_avail(&pDevData->FIFO_JobsDone) < SizeNeeded ){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" Locked_ioctl> FIFO_JobsDone is too full\n"); result = -ENOMEM;}
-			else
-			{
-				//> job erzeugen & adden
-				VPFE_JOB tmpJob;
-				memset(&tmpJob, 0, sizeof(tmpJob));	/* wegen warning */	
-				tmpJob.pDMA = pDMAKernelBuffer;
-				if( kfifo_put(&pDevData->FIFO_JobsToDo, tmpJob) == 0 ){
-					printk(KERN_WARNING MODDEBUGOUTTEXT" Locked_ioctl> can't add into FIFO_JobsToDo\n"); result = -ENOMEM;}
-			}//platz im FIFO_JobsDone
-		}//platz im FIFO_JobsToDo
-	}//if STATE_RUNNING
-
 
 	//> versuchen Buffer der Unit zu übergeben
 	VSDrv_VPFE_TryToAddNextBuffer_locked(pDevData);
 
-//<-----------------------------
 	spin_unlock_irqrestore(&pDevData->VSDrv_SpinLock, irqflags);
-
 
 	return result;
 }
@@ -461,27 +440,44 @@ int VSDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 /****************************************************************************************************************/
 void VSDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 {	
-	VPFE_JOB tmpJob;
+	VPFE_JOB job;
+	u32 was_busy;
 
-	//> Unit am laufen? und Frei? und Buffer im FIFO
-	if(pDevData->VSDrv_State != VSDRV_STATE_RUNNING)
-		return;
-	if(vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000)
-		return;
-	if( kfifo_len( &pDevData->FIFO_JobsToDo) == 0 )
+	if (pDevData->VSDrv_State != VSDRV_STATE_RUNNING)
 		return;
 
-	//> ok, Buffer aus FIFO der Unit adden
-	if( kfifo_get(&pDevData->FIFO_JobsToDo, &tmpJob) != 1) /*sicher ist sicher*/
-		{ pr_devel(MODDEBUGOUTTEXT"VSDrv_VPFE_TryToAddNextBuffer_locked> kfifo_get() failed!\n"); return;}
-	vpfe_reg_write(pDevData, tmpJob.pDMA, VPFE_SDR_ADDR);
+	// is the next VPFE start address empty?
+	if (vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0)
+		return;
 
-	smp_mb();//ist nicht notwendig?
+	// get the next job, but don't remove from the queue yet
+	if (kfifo_peek(&pDevData->FIFO_JobsToDo, &job) == 0)
+		return;
 
-	//> nächstes Bild darf ins RAM
+	// read busy flag, see below
+	was_busy = vpfe_reg_read(pDevData, VPFE_PCR) & 0x2;
+
+	// set the adddress
+	vpfe_reg_write(pDevData, job.pDMA, VPFE_SDR_ADDR);
 	vpfe_wen_enable(pDevData, TRUE);
 
-	//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_TryToAddNextBuffer_locked> add Buffer: 0x%llx\n", (u64)tmpJob.pDMA);
+	// The start address gets latched by VD, avoid race condition:
+	// If flag VPFE_PCR.BUSY or irq VPFE_VDINT0 got active (VD) in between writing
+	// the start address, we can't be sure if the address was copied or not.
+	// => remove the address temporarily and let the ISR (VPFE_VDINT0) do the job
+	// for the next frame:
+	if (	(was_busy == 0 && (vpfe_reg_read(pDevData, VPFE_PCR) & 0x2) != 0)
+		||	(vpfe_reg_read(pDevData, VPFE_IRQ_STS) & VPFE_VDINT0)) {
+		vpfe_wen_enable(pDevData, FALSE);
+		vpfe_reg_write(pDevData, 0, VPFE_SDR_ADDR);
+		dev_dbg(pDevData->dev, "TryToAddNextBuffer_locked(): detected VD start, delaying frame start");
+		return;
+	}
+
+	// success, remove job from the queue now
+	kfifo_skip(&pDevData->FIFO_JobsToDo);
+
+	//pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_TryToAddNextBuffer_locked> add Buffer: 0x%llx\n", (u64)tmpJob.pDMA);*/
 }
 
 
@@ -498,7 +494,9 @@ int VSDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 	u32 TimeDone_us = 0;
 	unsigned long irqflags;
 	int result = 0;
-
+	VPFE_JOB job;
+	u32 pendingBuffers[2];
+	unsigned int i;
 
 	spin_lock_irqsave(&pDevData->VSDrv_SpinLock, irqflags);
 //----------------------------->
@@ -520,26 +518,32 @@ int VSDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 	//  the VPFE_PCR register is 1 at that time). It automatically resets to 0 at the end of a frame."
 	//
 
-	//Pointer übergeben Bild? (Unit könnte gerade noch rein schreiben ist aber kein Problem, da sync)
-	if( vpfe_reg_read(pDevData, VPFE_SDR_ADDR) != 0x0000 )
-	{
-		VPFE_JOB tmpJob;
-		tmpJob.pDMA			= vpfe_reg_read(pDevData, VPFE_SDR_ADDR);
-		tmpJob.boIsOk 		= FALSE;
-		tmpJob.ISRCounter 	= pDevData->VPFE_ISRCounter;
+	// Remove pending VPFE buffers
+	pendingBuffers[0] = vpfe_reg_read(pDevData, VPFE_SDR_ADDR);
+	pendingBuffers[1] = pDevData->VPFE_CurrentSAddr;
 
-		if( kfifo_put(&pDevData->FIFO_JobsDone, tmpJob) == 0 ){
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> can't add into FIFO_JobsDone\n");}
-		pr_devel(MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> new Buffer: 0x%llx, (seq: %d) done\n", (u64)tmpJob.pDMA, tmpJob.ISRCounter);
+	for (i = 0; i < 2; i++) {
+		if (pendingBuffers[i] != 0)
+		{
+			job.pDMA		= pendingBuffers[i];
+			job.boIsOk 		= FALSE;
+			job.ISRCounter 	= pDevData->VPFE_ISRCounter;
+
+			if (kfifo_put(&pDevData->FIFO_JobsDone, job) == 0)
+				dev_warn(pDevData->dev, "VSDrv_VPFE_Abort: unable to add into FIFO_JobsDone queue\n");
+			else
+				dev_dbg(pDevData->dev, "VSDrv_VPFE_Abort: removing buffer 0x%llx from queue\n", (u64)job.pDMA);			
+		}
 	}
-	vpfe_reg_write(pDevData, 0x0000, VPFE_SDR_ADDR); //"This bit field is latched by VD."
+	vpfe_reg_write(pDevData, 0, VPFE_SDR_ADDR);
+	pDevData->VPFE_CurrentSAddr = 0;
 
 
 	//warten das die Unit steht
-	while( TimeDone_us < MAX_WAIT_TIME_US)
+	while (TimeDone_us < MAX_WAIT_TIME_US)
 	{	
 		//Unit ON & Busy?
-		if( (vpfe_reg_read(pDevData, VPFE_PCR) & 0x3) != 0x3 ) 
+		if ((vpfe_reg_read(pDevData, VPFE_PCR) & 0x3) != 0x3)
 			break;
 
 		//warten 
@@ -558,27 +562,17 @@ int VSDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 
 	//> alle Buffer aus .FIFO_JobsToDo >> .FIFO_JobsDone 
 	// im VSDrv_VPFE_AddBuffer() passen wir auf das alle Buffer aus FIFO_JobsToDo in FIFO_JobsDone passen
-	while ( kfifo_len(&pDevData->FIFO_JobsToDo) >= 1 )
+	while (kfifo_get(&pDevData->FIFO_JobsToDo, &job))
 	{
-		VPFE_JOB tmpJob;
+		job.boIsOk = FALSE;
 
-		//siche ist sicher (noch Platz im FIFO?)
-		if( kfifo_avail(&pDevData->FIFO_JobsDone) < 1){
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> FIFO_JobsDone is full!\n"); result = -ENOMEM; break;}
-
-		//Element aus FIFO_JobsToDo nehmen
-		if( kfifo_get(&pDevData->FIFO_JobsToDo, &tmpJob) == 1) 
-		{
-			tmpJob.boIsOk = FALSE; //damit wissen wir später das es ein Abort war
-
-			if( kfifo_put(&pDevData->FIFO_JobsDone, tmpJob) == 0){
-				printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> kfifo_put() failed!\n"); result = -EINTR; break;}
-			else
-				pr_devel(MODDEBUGOUTTEXT" - move Buffer FIFO_JobsToDo >> FIFO_JobsDone [0x%llx]\n",(u64)tmpJob.pDMA);			
+		if (kfifo_put(&pDevData->FIFO_JobsDone, job) == 0) {
+			dev_warn(pDevData->dev, "VSDrv_VPFE_Abort: kfifo_put() failed!\n");
+			result = -EINTR;
+			break;
 		}
-		else{
-			printk(KERN_WARNING MODDEBUGOUTTEXT" VSDrv_VPFE_Abort> kfifo_get() failed!\n"); result = -EINTR; break;}
 
+		dev_dbg(pDevData->dev, "VSDrv_VPFE_Abort: removing buffer 0x%llx from queue\n", (u64)job.pDMA);			
 	}//while FIFO_JobsToDo not empty
 
 
@@ -615,14 +609,13 @@ int VSDrv_VPFE_Configure(PDEVICE_DATA pDevData)
 //----------------------------->
 
 	//> steht die Unit noch?
-	if( pDevData->VSDrv_State != VSDRV_STATE_PREINIT)
-		{printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_VPFE_Configure> state must be VSDRV_STATE_PREINIT!\n"); result = -EBUSY;}
-	else
-	{
+	if (pDevData->VSDrv_State != VSDRV_STATE_PREINIT) {
+		printk(KERN_WARNING MODDEBUGOUTTEXT "VSDrv_VPFE_Configure> state must be VSDRV_STATE_PREINIT!\n");
+		result = -EBUSY;
+	} else {
 		u32 iReg, regVal;
 
-		//sollte nicht notwendig sein
-		pDevData->VPFE_IsStartFrameDone=FALSE;
+		pDevData->VPFE_CurrentSAddr = 0;
 
 		//> Unit config
 		/**********************************************************/
