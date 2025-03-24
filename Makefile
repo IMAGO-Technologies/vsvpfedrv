@@ -2,18 +2,6 @@
 # or call make DEBUG=y default is DEBUG=n
 #DEBUG = y
 
-# Add your debugging flag (or not) to EXTRA_CLAGS
-#Note:
-# for kernel upto 2.6.23 uses
-# 		CFLAGS
-#
-# later it used EXTRA_CLAGS instead of CFLAGS 
-#		e.g: EXTRA_CLAGS += $(DEBFLAGS) 
-#
-# since ~2007/2009 it uses ccflags-y
-#		e.g: ccflags-y += -v
-#
-
 ifeq ($(DEBUG),y)
   DEBFLAGS = -O -g -DDEBUG # "-O" is needed to expand inlines
   $(info we use debug flags [${DEBFLAGS}])
@@ -21,7 +9,6 @@ else
   DEBFLAGS = -O2  
 endif
 
-#ccflags-y := $(DEBFLAGS) -Werror -Wall -Wextra -Wno-unused-parameter -Wno-date-time 
 ccflags-y := $(DEBFLAGS) -Werror -Wall -Wno-unused-parameter -Wno-date-time 
 vsvpfedrv-objs := VSDrv.o AM473X.o FileOps.o BufferCtrl.o
 obj-m	:= vsvpfedrv.o
@@ -51,8 +38,7 @@ devel:
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions modules.order Module.symvers
 
-#default /lib/modules/$(KERNELRELEASE)/extra
+# default: /lib/modules/$(KERNELRELEASE)/extra
 install:
 	make -C $(KERNELDIR) M=$(PWD) modules_install
 	depmod -a 
-

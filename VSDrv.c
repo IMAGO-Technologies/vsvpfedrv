@@ -20,7 +20,7 @@
  *
  */
 
-#include "VSDrv.h"
+#include "vsvpfedrv.h"
 
 //module defines "sudo modinfo vcvpfedrv.ko"
 MODULE_VERSION(MODVERSION);
