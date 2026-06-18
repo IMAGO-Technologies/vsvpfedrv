@@ -2,6 +2,9 @@
 # or call make DEBUG=y default is DEBUG=n
 #DEBUG = y
 
+# include dkms.conf for PACKAGE_VERSION
+include $(PWD)/dkms.conf
+
 ifeq ($(DEBUG),y)
   DEBFLAGS = -O -g -DDEBUG # "-O" is needed to expand inlines
   $(info we use debug flags [${DEBFLAGS}])
@@ -9,7 +12,7 @@ else
   DEBFLAGS = -O2  
 endif
 
-ccflags-y := $(DEBFLAGS) -Werror -Wall -Wno-unused-parameter -Wno-date-time 
+ccflags-y := $(DEBFLAGS) -DMODVERSION=\"$(PACKAGE_VERSION)\" -Werror -Wall -Wno-unused-parameter -Wno-date-time 
 vsvpfedrv-objs := VSDrv.o AM473X.o FileOps.o BufferCtrl.o
 obj-m	:= vsvpfedrv.o
 
