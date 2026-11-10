@@ -71,7 +71,7 @@ static int dev_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	pr_devel("uevent: device: %s\n", dev_name(dev));
 
-	if( add_uevent_var(env, "DEVMODE=%#o", 0666) != 0)
+	if( add_uevent_var(env, "DEVMODE=%#o", 0660) != 0)
 		printk(KERN_WARNING MODDEBUGOUTTEXT" add_uevent_var() failed\n");
 	return 0;
 }
