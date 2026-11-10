@@ -23,9 +23,6 @@
 //> defines about the Module
 /******************************************************************************************/
 #define MODDATECODE __DATE__ " - " __TIME__
-#define MODLICENSE "GPL";
-#define MODDESCRIPTION "Kernel module for the VisionSensor VSPV VPFE(e) devices";
-#define MODAUTHOR "IMAGO Technologies GmbH";
 
 #define MODCLASSNAME	"vsdrv"
 #define MODMODULENAME	"vsvpfedrv"

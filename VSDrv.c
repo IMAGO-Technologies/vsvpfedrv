@@ -24,9 +24,9 @@
 
 //module defines "sudo modinfo vcvpfedrv.ko"
 MODULE_VERSION(MODVERSION);
-MODULE_LICENSE(MODLICENSE);
-MODULE_DESCRIPTION(MODDESCRIPTION);
-MODULE_AUTHOR(MODAUTHOR);
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("VPFE driver for the VisionSensor PV");
+MODULE_AUTHOR("IMAGO Technologies GmbH");
 
 //übergibt/speichert die pointer
 module_init(VSDrv_init);
@@ -133,7 +133,7 @@ int VSDrv_init(void)
 	if( platform_driver_register(&vsdrv_vpfe_plaform_driver) !=0)
 		printk(KERN_WARNING MODDEBUGOUTTEXT" platform_driver_register failed!\n");
 
-	printk(KERN_INFO MODDEBUGOUTTEXT" init done (%s [%s])\n", MODDATECODE, MODVERSION);
+	printk(KERN_INFO MODDEBUGOUTTEXT" init done ("__DATE__ " - " __TIME__" [%s])\n", MODVERSION);
 	return 0;
 }
 
