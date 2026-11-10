@@ -3,8 +3,6 @@
  *
  * Copyright (C) IMAGO Technologies GmbH
  *
- * Copyright (C) 201x IMAGO Technologies GmbH
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2, as published by the Free Software Foundation
@@ -22,6 +20,11 @@
 #include "vsvpfedrv.h"
 
 
+#ifndef no_llseek
+#define no_llseek NULL
+#endif
+
+
 //struct mit den file fns
 static struct file_operations VSDrv_fops = {
 	.owner	= THIS_MODULE,
@@ -34,34 +37,25 @@ static struct file_operations VSDrv_fops = {
 };
 
 
-
-/****************************************************************************************************************/
-// helpers fns
-/****************************************************************************************************************/
-/****************************************************************************************************************/
-
-
-//liest ein VPFE Register (keine Tests)
 static inline u32 vpfe_reg_read(PDEVICE_DATA pDevData, const u32 offset)
 {
 	return ioread32(pDevData->VPFE_CCDC_BaseAddr + offset);
 }
 
-//schreibt ein VPFE Register (keine Tests)
 static inline void vpfe_reg_write(PDEVICE_DATA pDevData, const u32 val, const u32 offset)
 {
 	iowrite32(val, pDevData->VPFE_CCDC_BaseAddr + offset);
 }
 
-//start/stop der Unit (This bit is latched by VD (start of frame))
+// start / stop unit, this bit is latched by VD (start of frame)
 static inline void vpfe_pcr_enable(PDEVICE_DATA pDevData, const int flag)
 {
 	vpfe_reg_write(pDevData, !!flag, VPFE_PCR);
 }
 
 
-//Data write enable. Controls whether or not input raw data is written to external memory.
-//This bit is latched by VD.
+// Data write enable. Controls whether or not input raw data is written to external memory.
+// This bit is latched by VD.
 static inline void vpfe_wen_enable(PDEVICE_DATA pDevData, const bool boTurnOn)
 {
 	u32 regVal = vpfe_reg_read(pDevData, VPFE_SYNMODE);
@@ -72,7 +66,6 @@ static inline void vpfe_wen_enable(PDEVICE_DATA pDevData, const bool boTurnOn)
 
 
 #ifdef DEBUG
-//gibt alle Register aus (nur zum debuggen)
 static void vpfe_reg_dump(PDEVICE_DATA pDevData)
 {
 	pr_devel(MODDEBUGOUTTEXT" named\n");
@@ -108,22 +101,6 @@ static void vpfe_reg_dump(PDEVICE_DATA pDevData)
 #endif
 
 
-
-
-
-
-
-
-
-/****************************************************************************************************************/
-// public fns
-/****************************************************************************************************************/
-/****************************************************************************************************************/
-
-
-/****************************************************************************************************************/
-//< HWIRQ > hier kommt der VPFE IRQ an (da nicht geteilt kein prüfen notwendig)
-/****************************************************************************************************************/
 irqreturn_t VSDrv_VPFE_interrupt(int irq, void *dev)
 {
 	u32 vpfe_irq_flags;	
@@ -196,10 +173,6 @@ irqreturn_t VSDrv_VPFE_interrupt(int irq, void *dev)
 }
 
 
-
-/****************************************************************************************************************/
-//wird aufgerufen wenn der kernel im DeviceTree einen Eintrag findet
-/****************************************************************************************************************/
 int VSDrv_AM473X_probe(struct platform_device *pdev)
 {		
 	int res, i, DevIndex, IRQNumber;
@@ -327,11 +300,11 @@ int VSDrv_AM473X_probe(struct platform_device *pdev)
 }
 
 
-
-/****************************************************************************************************************/
-//wird aufgerufen wenn das AM473Xdev removed wird
-/****************************************************************************************************************/
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0)
 int VSDrv_AM473X_remove(struct platform_device *pdev)
+#else
+void VSDrv_AM473X_remove(struct platform_device *pdev)
+#endif
 {
 	unsigned int i, releaseBufCount = 0;
 	PDEVICE_DATA pDevData = (PDEVICE_DATA)platform_get_drvdata(pdev);
@@ -343,7 +316,11 @@ int VSDrv_AM473X_remove(struct platform_device *pdev)
 	pr_devel(MODDEBUGOUTTEXT" VSDrv_AM473X_remove (%d:%d)\n", MAJOR(pDevData->VSDrv_DeviceNumber), MINOR(pDevData->VSDrv_DeviceNumber));
 	if (pDevData == NULL) {
 		printk(KERN_WARNING MODDEBUGOUTTEXT" device pointer is zero!\n");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0)
 		return -EFAULT;
+#else
+		return;
+#endif
 	}
 
 	//-> stop VPFE unit
@@ -377,15 +354,13 @@ int VSDrv_AM473X_remove(struct platform_device *pdev)
 
 	
 	pDevData->VSDrv_State = VSDRV_STATE_PREINIT;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0)
 	return 0;
+#endif
 }
 
 
-
-/****************************************************************************************************************/
-//fügt wenn ins FIFO den buffer hinzu (wenn STATE_RUNNING & noch frei)
-//versucht dann auch einen Buffer in die VPFE Unit zu ädden
-/****************************************************************************************************************/
 int VSDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 {
 	unsigned long irqflags;
@@ -433,11 +408,6 @@ int VSDrv_VPFE_AddBuffer(PDEVICE_DATA pDevData, dma_addr_t pDMAKernelBuffer)
 }
 
 
-
-/****************************************************************************************************************/
-//Achtung! wird vom HW-ISR aufgerufen
-// wenn Unit frei & läuft, und ein Buffer FIFO_JobsToDo dann der Unit übergeben
-/****************************************************************************************************************/
 void VSDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 {	
 	VPFE_JOB job;
@@ -481,13 +451,6 @@ void VSDrv_VPFE_TryToAddNextBuffer_locked(PDEVICE_DATA pDevData)
 }
 
 
-
-/****************************************************************************************************************/
-// - hält Unit an, 
-// - bricht alle Waiter ab, (bleibt im signaled state)
-// - alle Buffer sind dann in FIFO_JobsDone,
-// - neuer STATE_PREINIT  
-/****************************************************************************************************************/
 int VSDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 {
 	const u32 MAX_WAIT_TIME_US = 100*1000;
@@ -594,12 +557,6 @@ int VSDrv_VPFE_Abort(PDEVICE_DATA pDevData)
 }
 
 
-
-/****************************************************************************************************************/
-//- konfiguriert die Unit
-//- reset des Waiters 
-//- neuer State (Running)
-/****************************************************************************************************************/
 int VSDrv_VPFE_Configure(PDEVICE_DATA pDevData)
 {
 	unsigned long irqflags;

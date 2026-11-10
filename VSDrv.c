@@ -63,12 +63,17 @@ static struct platform_driver vsdrv_vpfe_plaform_driver = {
 
 // "Called when a device is added, removed from this class, or a few other things that generate uevents to add the environment variables."
 /****************************************************************************************************************/
-static int VSDrv_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+static int dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+#else
+static int dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+#endif
 {
-	//pr_devel(MODDEBUGOUTTEXT" VSDrv_dev_uevent\n");
-    if( add_uevent_var(env, "DEVMODE=%#o", 0666) != 0)
+	pr_devel("uevent: device: %s\n", dev_name(dev));
+
+	if( add_uevent_var(env, "DEVMODE=%#o", 0666) != 0)
 		printk(KERN_WARNING MODDEBUGOUTTEXT" add_uevent_var() failed\n");
-    return 0;
+	return 0;
 }
 
 
@@ -119,13 +124,17 @@ int VSDrv_init(void)
 
 	/* erzeugt eine Sysfs class */
 	/**********************************************************************/
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+	_ModuleData.pModuleClass = class_create(MODCLASSNAME);
+#else
 	_ModuleData.pModuleClass = class_create(THIS_MODULE, MODCLASSNAME);
+#endif
 	if( IS_ERR(_ModuleData.pModuleClass))
 		printk(KERN_WARNING MODDEBUGOUTTEXT" can't create sysfs class!\n");
 	
 	//add the uevend handler
 	if( !IS_ERR(_ModuleData.pModuleClass) )
-		_ModuleData.pModuleClass->dev_uevent = VSDrv_dev_uevent;	//send uevents to udev, so it'll create the /dev/node
+		_ModuleData.pModuleClass->dev_uevent = dev_uevent;	//send uevents to udev, so it'll create the /dev/node
 
 
 	/* macht dem Kernel den treiber bekannt */

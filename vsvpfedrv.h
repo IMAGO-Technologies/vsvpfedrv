@@ -189,8 +189,11 @@ void VSDrv_InitDrvData(PDEVICE_DATA pDevData);
 
 /* AM473X fns */
 int VSDrv_AM473X_probe(struct platform_device *pdev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0)
 int VSDrv_AM473X_remove(struct platform_device *pdev);
-
+#else
+void VSDrv_AM473X_remove(struct platform_device *pdev);
+#endif
 
 /* ~IRQ fns */
 irqreturn_t VSDrv_VPFE_interrupt(int irq, void *dev);
