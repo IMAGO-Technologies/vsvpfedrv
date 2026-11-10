@@ -104,7 +104,9 @@ int VSDrv_BUF_mmap(struct file *pFile, struct vm_area_struct *vma)
 	// http://elixir.free-electrons.com/linux/latest/source/drivers/char/mem.c
 	//  und wen hier down_write(&vma->vm_mm->mmap_sem); aufgerufen wird dann dead lock!
 
+#ifdef CONFIG_ARM	// required for analysis with sparse on other architectures
 	vma->vm_page_prot = __pgprot_modify(vma->vm_page_prot, L_PTE_MT_MASK, L_PTE_MT_WRITEBACK | L_PTE_XN);
+#endif
 
 	//> mappen
  	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, size, vma->vm_page_prot) < 0) {

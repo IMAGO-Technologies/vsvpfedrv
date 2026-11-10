@@ -23,7 +23,7 @@
 
 
 //struct mit den file fns
-struct file_operations VSDrv_fops = {
+static struct file_operations VSDrv_fops = {
 	.owner	= THIS_MODULE,
 	.open	= VSDrv_open,
 	.read	= VSDrv_read,
