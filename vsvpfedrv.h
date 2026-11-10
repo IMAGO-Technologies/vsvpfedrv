@@ -74,10 +74,6 @@ typedef u8 IOCTLBUFFER[128];
 #define FALSE 0
 #define TRUE 1
 
-#define MIN(x,y) (x < y ? x : y)
-#define MAX(x,y) (x > y ? x : y)
-
-
 #define VSDRV_STATE_UNUSED	0x00	//!< Struct vor dem Init bzw. nach dem UnInit
 #define VSDRV_STATE_PREINIT	0x01	//!< FIFOs /SEM erzeugt… alle Feler gültig
 #define VSDRV_STATE_RUNNING	0x02	//!< AOI wurde im VPFE gesetzt, kann nicht geändert werden, allco möglich
