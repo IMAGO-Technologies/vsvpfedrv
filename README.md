@@ -3,4 +3,4 @@ This kernel module implements the sensor interface driver for IMAGO's *VisionSen
 The module code is automatically analyzed by using *sparse* and *smatch*.
 
 Current status:
-[![Analyze kernel module](https://github.com/IMAGO-Technologies/vsmipi/actions/workflows/analyze.yml/badge.svg)](https://github.com/IMAGO-Technologies/vsmipi/actions/workflows/analyze.yml)
+[![Analyze kernel module](https://github.com/IMAGO-Technologies/vsvpfedrv/actions/workflows/analyze.yml/badge.svg)](https://github.com/IMAGO-Technologies/vsvpfedrv/actions/workflows/analyze.yml)
